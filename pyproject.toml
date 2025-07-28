@@ -1,0 +1,17 @@
+[project]
+name = "psplines"
+version = "0.1.0"
+description = "Implementation of PSplines in Python"
+readme = "README.md"
+authors = [
+    { name = "Grayson Bellamy", email = "graysontbellamy@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = []
+
+[project.scripts]
+psplines = "psplines:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
