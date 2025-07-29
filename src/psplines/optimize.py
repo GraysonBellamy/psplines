@@ -17,6 +17,7 @@ best lam, score = cross_validation(ps)
 from __future__ import annotations
 
 from typing import Callable, Tuple
+import warnings
 
 import numpy as np
 import scipy.sparse as sp
@@ -176,31 +177,99 @@ def _sweep_lambda(
 
 # ----------------------------------------------------------------------------
 def l_curve(
-    pspline: PSpline,
-    lambda_bounds: tuple[float, float] = (1e-6, 1e6),
-    num_lambda: int = 81,
-) -> Tuple[float, float]:
+    pspline,
+    lambda_bounds=(1e-6, 1e6),
+    num_lambda=81,
+    refine=True,
+    refine_factor=10,
+    refine_points=81,
+    smooth_kappa=True,
+):
     """
-    Pick Lambda via maximum curvature of (log_pen, log_rss) curve.
+    Pick lambda via maximum curvature of the L-curve.
+    Implements two-stage search (coarse + refine), vectorized curvature,
+    optional smoothing, and edge-case warnings.
+
+    Parameters
+    ----------
+    pspline : PSpline
+        Fitted PSpline instance (coefficient solver ready).
+    lambda_bounds : tuple
+        (min, max) bounds for initial lambda grid (log-uniform).
+    num_lambda : int
+        Number of points in the initial lambda grid.
+    refine : bool
+        Whether to perform a second, finer search around the coarse optimum.
+    refine_factor : float
+        Factor to widen/narrow bounds for refinement around coarse lambda.
+    refine_points : int
+        Number of points in the refined grid.
+    smooth_kappa : bool
+        Whether to apply a 3-point moving average to curvature values.
     """
-    grid = np.logspace(
-        np.log10(lambda_bounds[0]), np.log10(lambda_bounds[1]), num_lambda
-    )
+    # Coarse grid search
+    log_min, log_max = np.log10(lambda_bounds[0]), np.log10(lambda_bounds[1])
+    grid = np.logspace(log_min, log_max, num_lambda)
     lr, lp = _sweep_lambda(pspline, grid)
     valid = np.isfinite(lr) & np.isfinite(lp)
-    if valid.sum() < 5:
-        raise RuntimeError("Not enough L‑curve points")
-    x, y = lp[valid], lr[valid]
-    lamv = grid[valid]
+    x, y, lamv = lp[valid], lr[valid], grid[valid]
+
+    # Vectorized curvature calculation
+    # central differences for dx, dy, ddx, ddy
+    dx = (x[2:] - x[:-2]) * 0.5
+    dy = (y[2:] - y[:-2]) * 0.5
+    ddx = x[2:] - 2 * x[1:-1] + x[:-2]
+    ddy = y[2:] - 2 * y[1:-1] + y[:-2]
     kappa = np.full_like(x, np.nan)
-    for i in range(2, len(x) - 2):
-        dx = (x[i + 1] - x[i - 1]) / 2
-        dy = (y[i + 1] - y[i - 1]) / 2
-        ddx = x[i + 1] - 2 * x[i] + x[i - 1]
-        ddy = y[i + 1] - 2 * y[i] + y[i - 1]
-        kappa[i] = abs(dx * ddy - dy * ddx) / (dx * dx + dy * dy) ** 1.5
+    denom = (dx * dx + dy * dy) ** 1.5
+    kappa[1:-1] = np.abs(dx * ddy - dy * ddx) / denom
+
+    # Optional smoothing of curvature
+    if smooth_kappa:
+        kernel = np.ones(3) / 3
+        kappa = np.convolve(kappa, kernel, mode="same")
+
+    # Identify coarse optimum
     idx = int(np.nanargmax(kappa))
-    return _finish(pspline, lamv[idx], kappa[idx])
+    # Edge-case warning if optimum near boundary
+    if idx < 2 or idx > len(x) - 3:
+        warnings.warn(
+            "L-curve optimum at boundary of grid; consider expanding lambda_bounds",
+            UserWarning,
+        )
+    lam_corner = lamv[idx]
+    kappa_corner = kappa[idx]
+
+    # Optional refinement around coarse optimum
+    if refine:
+        lower = lam_corner / refine_factor
+        upper = lam_corner * refine_factor
+        log_l, log_u = np.log10(lower), np.log10(upper)
+        grid2 = np.logspace(log_l, log_u, refine_points)
+        lr2, lp2 = _sweep_lambda(pspline, grid2)
+        valid2 = np.isfinite(lr2) & np.isfinite(lp2)
+        x2, y2, lamv2 = lp2[valid2], lr2[valid2], grid2[valid2]
+
+        dx2 = (x2[2:] - x2[:-2]) * 0.5
+        dy2 = (y2[2:] - y2[:-2]) * 0.5
+        ddx2 = x2[2:] - 2 * x2[1:-1] + x2[:-2]
+        ddy2 = y2[2:] - 2 * y2[1:-1] + y2[:-2]
+        kappa2 = np.full_like(x2, np.nan)
+        denom2 = (dx2 * dx2 + dy2 * dy2) ** 1.5
+        kappa2[1:-1] = np.abs(dx2 * ddy2 - dy2 * ddx2) / denom2
+        if smooth_kappa:
+            kappa2 = np.convolve(kappa2, kernel, mode="same")
+
+        idx2 = int(np.nanargmax(kappa2))
+        if idx2 < 2 or idx2 > len(x2) - 3:
+            warnings.warn(
+                "Refined L-curve optimum at boundary; expand refine_factor or refine_points",
+                UserWarning,
+            )
+        lam_corner = lamv2[idx2]
+        kappa_corner = kappa2[idx2]
+
+    return _finish(pspline, lam_corner, kappa_corner)
 
 
 # ----------------------------------------------------------------------------
