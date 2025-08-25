@@ -23,7 +23,6 @@ from numpy.typing import ArrayLike, NDArray
 import pymc as pm
 import arviz as az
 from scipy.interpolate import BSpline
-import pytensor
 
 from .basis import b_spline_basis, b_spline_derivative_basis
 from .penalty import difference_matrix
@@ -85,19 +84,81 @@ class PSpline:
     _xr: Optional[float] = None
 
     def __post_init__(self):
-        self.x = _as1d(self.x)
-        self.y = _as1d(self.y)
+        # Convert and validate input arrays
+        try:
+            self.x = _as1d(self.x)
+            self.y = _as1d(self.y)
+        except (ValueError, TypeError) as e:
+            raise ValueError(f"Invalid input arrays: {e}")
+        
+        # Validate array dimensions
+        if self.x.size == 0 or self.y.size == 0:
+            raise ValueError("Input arrays cannot be empty")
         if self.x.size != self.y.size:
-            raise ValueError("x and y must be same length")
+            raise ValueError(f"x and y must have the same length (got {self.x.size} and {self.y.size})")
+        if self.x.size < 2:
+            raise ValueError(f"Need at least 2 data points (got {self.x.size})")
+        
+        # Check for invalid values
+        if not np.all(np.isfinite(self.x)):
+            raise ValueError("x contains non-finite values (NaN or inf)")
+        if not np.all(np.isfinite(self.y)):
+            raise ValueError("y contains non-finite values (NaN or inf)")
+        if len(np.unique(self.x)) < 2:
+            raise ValueError("x must contain at least 2 unique values")
+        
+        # Validate parameters
+        if self.nseg <= 0:
+            raise ValueError(f"nseg must be positive (got {self.nseg})")
+        if self.degree < 0:
+            raise ValueError(f"degree must be non-negative (got {self.degree})")
+        if self.lambda_ <= 0:
+            raise ValueError(f"lambda_ must be positive (got {self.lambda_})")
+        if self.penalty_order < 1:
+            raise ValueError(f"penalty_order must be >= 1 (got {self.penalty_order})")
+        if self.nseg <= self.degree:
+            raise ValueError(f"nseg ({self.nseg}) must be greater than degree ({self.degree})")
+            
         self.constraints = self.constraints or {}
 
     def fit(self, *, xl: Optional[float] = None, xr: Optional[float] = None) -> PSpline:
         """
         Fit the P-spline model.
+        
+        Parameters
+        ----------
+        xl : float, optional
+            Left boundary of the domain. Defaults to min(x).
+        xr : float, optional  
+            Right boundary of the domain. Defaults to max(x).
+            
+        Returns
+        -------
+        PSpline
+            The fitted spline object.
         """
-        # domain
-        self._xl = float(self.x.min() if xl is None else xl)
-        self._xr = float(self.x.max() if xr is None else xr)
+        # Validate and set domain
+        x_array = np.asarray(self.x)
+        x_min = float(np.min(x_array))
+        x_max = float(np.max(x_array))
+        
+        if xl is not None:
+            if not np.isfinite(xl):
+                raise ValueError("xl must be finite")
+            if xl > x_min:
+                raise ValueError(f"xl ({xl}) must be <= min(x) ({x_min})")
+        
+        if xr is not None:
+            if not np.isfinite(xr):
+                raise ValueError("xr must be finite")
+            if xr < x_max:
+                raise ValueError(f"xr ({xr}) must be >= max(x) ({x_max})")
+                
+        self._xl = xl if xl is not None else x_min
+        self._xr = xr if xr is not None else x_max
+        
+        if self._xl >= self._xr:
+            raise ValueError(f"xl ({self._xl}) must be < xr ({self._xr})")
         # basis and penalty
         self.B, self.knots = b_spline_basis(
             self.x, self._xl, self._xr, self.nseg, self.degree
@@ -134,12 +195,58 @@ class PSpline:
         """
         Predict smooth (or derivative) with optional uncertainty.
 
-        se_method:
-          - 'analytic': delta-method SE (default)       -> (fhat, se)
-          - 'bootstrap': parametric bootstrap SEs       -> (fhat, se)
-          - 'bayes': posterior mean + HDI credible band -> (mean, lower, upper)
+        Parameters
+        ----------
+        x_new : array-like
+            Points at which to evaluate the spline.
+        derivative_order : int, optional
+            Order of derivative to compute. None for function values.
+        return_se : bool, default False
+            Whether to return standard errors.
+        se_method : str, default "analytic"
+            Method for computing uncertainty:
+            - 'analytic': delta-method SE -> (fhat, se)
+            - 'bootstrap': parametric bootstrap SEs -> (fhat, se)  
+            - 'bayes': posterior mean + HDI credible band -> (mean, lower, upper)
+        B_boot : int, default 5000
+            Number of bootstrap replicates (for bootstrap method).
+        seed : int, optional
+            Random seed (for bootstrap method).
+        n_jobs : int, default 1
+            Number of parallel jobs (for bootstrap method).
+        hdi_prob : float, default 0.95
+            Probability for HDI credible band (for Bayesian method).
+
+        Returns
+        -------
+        NDArray or tuple
+            Predictions, optionally with uncertainty estimates.
         """
-        xq = _as1d(x_new)
+        if self.coef is None:
+            raise RuntimeError("Model not fitted. Call fit() first.")
+            
+        # Validate input
+        try:
+            xq = _as1d(x_new)
+        except (ValueError, TypeError) as e:
+            raise ValueError(f"Invalid x_new array: {e}")
+            
+        if xq.size == 0:
+            raise ValueError("x_new cannot be empty")
+        if not np.all(np.isfinite(xq)):
+            raise ValueError("x_new contains non-finite values (NaN or inf)")
+            
+        # Validate parameters
+        if derivative_order is not None and derivative_order <= 0:
+            raise ValueError(f"derivative_order must be positive (got {derivative_order})")
+        if se_method not in ("analytic", "bootstrap", "bayes"):
+            raise ValueError(f"se_method must be 'analytic', 'bootstrap', or 'bayes' (got '{se_method}')")
+        if B_boot <= 0:
+            raise ValueError(f"B_boot must be positive (got {B_boot})")
+        if n_jobs <= 0:
+            raise ValueError(f"n_jobs must be positive (got {n_jobs})")
+        if not (0 < hdi_prob < 1):
+            raise ValueError(f"hdi_prob must be between 0 and 1 (got {hdi_prob})")
 
         # Bayesian credible band
         if se_method == "bayes":
@@ -184,16 +291,18 @@ class PSpline:
             upper = np.percentile(deriv_draws, (1 + hdi_prob) / 2 * 100, axis=0)
             return mean, lower, upper
 
-        # bootstrap SEs
+        # Bootstrap SEs
         if se_method == "bootstrap" and return_se:
             return self._bootstrap_predict(xq, derivative_order, B_boot, seed, n_jobs)
 
-        # analytic or plain
-        if self.coef is None:
-            raise RuntimeError("Call fit() first")
+        # Analytic or plain prediction
         if derivative_order is None:
+            assert self._xl is not None and self._xr is not None, "Domain bounds not set. Call fit() first."
             Bq, _ = b_spline_basis(xq, self._xl, self._xr, self.nseg, self.degree)
         else:
+            if derivative_order <= 0:
+                raise ValueError("derivative_order must be positive")
+            assert self._xl is not None and self._xr is not None, "Domain bounds not set. Call fit() first."
             Bq, _ = b_spline_derivative_basis(
                 xq,
                 self._xl,
@@ -203,11 +312,100 @@ class PSpline:
                 derivative_order,
                 self.knots,
             )
+        
         fhat = Bq @ self.coef
+        
         if not return_se:
             return fhat
-        if self.se_fitted is None:
-            raise RuntimeError("Analytic SEs unavailable")
+            
+        if se_method != "analytic":
+            raise ValueError(f"Unknown se_method: {se_method}")
+            
+        if self.se_coef is None:
+            raise RuntimeError("Analytic SEs unavailable. Call fit() with uncertainty computation.")
+            
+        cov_diag = self.se_coef**2
+        B2 = Bq.multiply(Bq) if sp.issparse(Bq) else Bq**2
+        se = np.sqrt(B2 @ cov_diag)
+        return fhat, se
+
+    def derivative(
+        self,
+        x_new: ArrayLike,
+        *,
+        deriv_order: int = 1,
+        return_se: bool = False,
+        se_method: str = "analytic",
+        **kwargs
+    ) -> NDArray | Tuple[NDArray, ...]:
+        """
+        Compute k-th derivative of the fitted spline.
+        
+        Parameters
+        ----------
+        x_new : array-like
+            Points at which to evaluate the derivative.
+        deriv_order : int, default 1
+            Order of derivative to compute.
+        return_se : bool, default False
+            Whether to return standard errors.
+        se_method : str, default "analytic"
+            Method for computing standard errors ("analytic" or "bootstrap").
+        **kwargs
+            Additional arguments passed to bootstrap method if applicable.
+            
+        Returns
+        -------
+        NDArray or tuple
+            Derivative values, optionally with standard errors.
+        """
+        if self.coef is None:
+            raise RuntimeError("Model not fitted. Call fit() first.")
+            
+        # Validate input
+        try:
+            xq = _as1d(x_new)
+        except (ValueError, TypeError) as e:
+            raise ValueError(f"Invalid x_new array: {e}")
+            
+        if xq.size == 0:
+            raise ValueError("x_new cannot be empty")
+        if not np.all(np.isfinite(xq)):
+            raise ValueError("x_new contains non-finite values (NaN or inf)")
+        if deriv_order <= 0:
+            raise ValueError(f"deriv_order must be positive (got {deriv_order})")
+        if se_method not in ("analytic", "bootstrap", "bayes"):
+            raise ValueError(f"se_method must be 'analytic', 'bootstrap', or 'bayes' (got '{se_method}')")
+        
+        # Use predict method for bootstrap and Bayesian methods
+        if se_method in ("bootstrap", "bayes"):
+            return self.predict(
+                x_new, 
+                derivative_order=deriv_order, 
+                return_se=return_se, 
+                se_method=se_method,
+                **kwargs
+            )
+        
+        # Direct computation for analytic method (more efficient)
+        assert self._xl is not None and self._xr is not None, "Domain bounds not set. Call fit() first."
+        Bq, _ = b_spline_derivative_basis(
+            xq,
+            self._xl,
+            self._xr,
+            self.nseg,
+            self.degree,
+            deriv_order,
+            self.knots,
+        )
+        fhat = Bq @ self.coef
+        
+        if not return_se:
+            return fhat
+            
+        if self.se_coef is None:
+            raise RuntimeError("Analytic SEs unavailable. Call fit() with uncertainty computation.")
+            
         cov_diag = self.se_coef**2
         B2 = Bq.multiply(Bq) if sp.issparse(Bq) else Bq**2
         se = np.sqrt(B2 @ cov_diag)
@@ -227,8 +425,9 @@ class PSpline:
         random_seed: Optional[int] = None,
     ) -> Any:
         # Prepare basis and penalty
-        self._xl = float(self.x.min()) if self._xl is None else self._xl
-        self._xr = float(self.x.max()) if self._xr is None else self._xr
+        x_array = np.asarray(self.x)
+        self._xl = float(np.min(x_array)) if self._xl is None else self._xl
+        self._xr = float(np.max(x_array)) if self._xr is None else self._xr
         B_sp, self.knots = b_spline_basis(
             self.x, self._xl, self._xr, self.nseg, self.degree
         )
@@ -242,7 +441,7 @@ class PSpline:
         coeffs = np.eye(nb)
         self._spline = BSpline(self.knots, coeffs, self.degree, extrapolate=False)
 
-        with pm.Model() as model:
+        with pm.Model():
             lam = pm.Gamma("lam", alpha=a, beta=b, shape=D.shape[0])
             Q = pm.math.dot(D.T * lam, D)
             Q_j = Q + I_nb * 1e-6
@@ -255,8 +454,6 @@ class PSpline:
             sigma = pm.InverseGamma("sigma", alpha=c, beta=d)
             mu = pm.Deterministic("mu", pm.math.dot(B, alpha))
             pm.Normal("y_obs", mu=mu, sigma=sigma, observed=y)
-            print(pytensor.link.c.cmodule.default_blas_ldflags())
-            print(pytensor.config.blas__ldflags)
             trace = pm.sample(
                 draws=draws,
                 tune=tune,
@@ -419,25 +616,40 @@ class PSpline:
 
     def _update_uncertainty(self) -> None:
         """
-        Compute ED, sigma2, and analytic SEs.
+        Compute ED, sigma2, and analytic SEs using efficient vectorized diagonal computation.
         """
+        if self.B is None or self.fitted_values is None:
+            raise RuntimeError("Model must be fitted before computing uncertainty")
+            
         nb = self.B.shape[1]
         self.ED = effective_df(
             self.B, difference_matrix(nb, self.penalty_order), self.lambda_
         )
         resid = self.y - self.fitted_values
-        self.sigma2 = float(resid @ resid) / (len(self.y) - self.ED)
+        n_obs = self.y.size
+        self.sigma2 = float(resid @ resid) / (n_obs - self.ED)
+        
+        # Optimized diagonal computation: solve A @ U = I to get diagonals of A^(-1)
         A = (self._BtB + self.lambda_ * self._DtD).tocsr()
-        diag = np.empty(nb)
-        for i in range(nb):
-            e = np.zeros(nb)
-            e[i] = 1
-            u = spsolve(A, e)
-            diag[i] = self.sigma2 * u[i]
-        self.se_coef = np.sqrt(diag)
+        identity_matrix = sp.identity(nb, format="csr")
+        U = spsolve(A, identity_matrix)  # U contains columns of A^(-1)
+        
+        # Extract diagonal of A^(-1) efficiently
+        if sp.issparse(U):
+            # If U is sparse, extract diagonal
+            diag = np.array([U[i, i] for i in range(nb)])
+        else:
+            # If U is dense, extract diagonal directly
+            diag = np.diag(U)
+            
+        diag *= self.sigma2
+        self.se_coef = np.sqrt(np.abs(diag))  # abs() for numerical stability
+        
+        # Compute fitted value standard errors
         B2 = self.B.multiply(self.B) if sp.issparse(self.B) else self.B**2
-        self.se_fitted = np.sqrt(B2 @ diag)
+        self.se_fitted = np.sqrt(B2 @ np.abs(diag))
 
     def __repr__(self) -> str:
         st = "fitted" if self.coef is not None else "unfitted"
-        return f"<PSpline {st}; n={self.x.size};seg={self.nseg};deg={self.degree};d={self.penalty_order}>"
+        n_obs = self.x.size
+        return f"<PSpline {st}; n={n_obs};seg={self.nseg};deg={self.degree};d={self.penalty_order}>"

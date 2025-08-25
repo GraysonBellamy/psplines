@@ -1,0 +1,128 @@
+site_name: PSplines Documentation
+site_description: Penalized B-Spline Smoothing for Python
+site_url: https://graysonbellamy.github.io/psplines
+repo_url: https://github.com/graysonbellamy/psplines
+repo_name: graysonbellamy/psplines
+
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.highlight
+    - search.share
+    - toc.integrate
+    - content.code.copy
+    - content.code.annotate
+  palette:
+    # Light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: blue
+      accent: cyan
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: blue
+      accent: cyan
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  font:
+    text: Roboto
+    code: Roboto Mono
+  icon:
+    repo: fontawesome/brands/github
+
+nav:
+  - Home: index.md
+  - User Guide:
+    - Getting Started: user-guide/getting-started.md
+    - Installation: user-guide/installation.md
+    - Quick Start: user-guide/quick-start.md
+    - Core Concepts: user-guide/core-concepts.md
+  - Tutorials:
+    - Basic Usage: tutorials/basic-usage.md
+    - Parameter Selection: tutorials/parameter-selection.md
+    - Uncertainty Quantification: tutorials/uncertainty-methods.md
+    - Advanced Features: tutorials/advanced-features.md
+  - Examples:
+    - Gallery: examples/gallery.md
+  - API Reference:
+    - Core: api/core.md
+    - Basis Functions: api/basis.md
+    - Penalty Matrices: api/penalty.md
+    - Optimization: api/optimize.md
+    - Utilities: api/utils.md
+  - Theory:
+    - Mathematical Background: theory/mathematical-background.md
+  - Contributing: contributing.md
+
+plugins:
+  - search:
+      separator: '[\s\u200b\-_,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: numpy
+            docstring_section_style: list
+            members_order: source
+            show_source: true
+            show_bases: true
+            show_inheritance_diagram: true
+            merge_init_into_class: true
+            separate_signature: true
+            show_signature_annotations: true
+            signature_crossrefs: true
+  - mkdocs-jupyter:
+      execute: false
+      include_source: true
+      allow_errors: false
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.arithmatex:
+      generic: true
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - toc:
+      permalink: true
+  - tables
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/graysonbellamy/psplines
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/psplines
+
+extra_javascript:
+  - javascripts/mathjax.js
+  - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js
+
+extra_css:
+  - stylesheets/extra.css

@@ -4,21 +4,45 @@ version = "0.1.3"
 description = "Implementation of PSplines in Python"
 readme = "README.md"
 authors = [
-    { name = "Grayson Bellamy", email = "graysontbellamy@gmail.com" }
+    { name = "Grayson Bellamy", email = "gbellamy@umd.edu" }
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "numpy",
-    "scipy",
-    "pymc",
-    "matplotlib",
-    "pytensor",
-    "arviz",
+    "numpy>=1.21",
+    "scipy>=1.7",
+    "pymc>=5.0",
+    "matplotlib>=3.4",
+    "pytensor>=2.0",
+    "arviz>=0.12",
+    "joblib>=1.0",
 ]
 
-[project.scripts]
-psplines = "psplines:main"
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov",
+    "ruff",
+    "mypy",
+]
+
+[project.urls]
+Homepage = "https://github.com/graysonbellamy/psplines"
+Repository = "https://github.com/graysonbellamy/psplines"
+Issues = "https://github.com/graysonbellamy/psplines/issues"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "mkdocs>=1.6.1",
+    "mkdocs-jupyter>=0.25.1",
+    "mkdocs-material>=9.6.18",
+    "mkdocstrings[python]>=0.30.0",
+    "mypy>=1.17.1",
+    "pytest>=8.4.1",
+    "pytest-cov>=6.2.1",
+    "ruff>=0.12.10",
+    "types-setuptools>=80.9.0.20250822",
+]
