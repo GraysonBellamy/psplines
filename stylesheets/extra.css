@@ -1,0 +1,55 @@
+/* Custom styles for PSplines documentation */
+
+/* Code highlighting improvements */
+.highlight {
+  margin: 1em 0;
+}
+
+/* Math display improvements */
+.arithmatex {
+  margin: 1em 0;
+}
+
+/* API documentation improvements */
+.md-typeset h3 code {
+  background-color: var(--md-code-bg-color);
+  border-radius: 0.1rem;
+  color: var(--md-code-fg-color);
+  font-size: 0.85em;
+  padding: 0.1rem 0.3rem;
+}
+
+/* Improve table styling */
+.md-typeset table:not([class]) {
+  border-collapse: collapse;
+  margin: 1.5em 0;
+  width: 100%;
+}
+
+.md-typeset table:not([class]) th,
+.md-typeset table:not([class]) td {
+  border: 0.05rem solid var(--md-typeset-table-color);
+  padding: 0.6rem 1.2rem;
+}
+
+/* Admonition improvements */
+.md-typeset .admonition {
+  margin: 1.5625em 0;
+}
+
+/* Navigation improvements */
+.md-nav__item .md-nav__link--active {
+  font-weight: 700;
+}
+
+/* Code block title improvements */
+.md-typeset .codehilite > .codehilitetable .linenos {
+  background-color: var(--md-code-bg-color);
+}
+
+/* Responsive improvements for mobile */
+@media screen and (max-width: 76.1875em) {
+  .md-typeset .codehilite {
+    margin: 1em -0.8rem;
+  }
+}
