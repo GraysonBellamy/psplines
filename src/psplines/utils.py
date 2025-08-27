@@ -1,8 +1,15 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .core import PSpline
+
 import matplotlib.pyplot as plt
 import numpy as np
 
 
-def plot_fit(pspline, title="P-spline Fit", subsample=1000):
+def plot_fit(pspline: PSpline, title: str = "P-spline Fit", subsample: int = 1000) -> None:
     """
     Plot data and P-spline fit, subsampling for large datasets (inspired by Figure 2.9, Page 29).
 
@@ -35,8 +42,12 @@ def plot_fit(pspline, title="P-spline Fit", subsample=1000):
 
 
 def plot_derivatives(
-    pspline, deriv_orders=[1], x_new=None, title="P-spline Derivatives", subsample=1000
-):
+    pspline: PSpline, 
+    deriv_orders: list[int] | None = None, 
+    x_new: np.ndarray | None = None, 
+    title: str = "P-spline Derivatives", 
+    subsample: int = 1000
+) -> None:
     """
     Plot derivatives of the P-spline smoothed curve (Section 2.5, Page 20).
 
@@ -50,6 +61,9 @@ def plot_derivatives(
     Returns:
     - None (displays plot)
     """
+    if deriv_orders is None:
+        deriv_orders = [1]
+    
     if pspline.B is None or pspline.coef is None:
         raise ValueError("Model not fitted. Call fit() first.")
 

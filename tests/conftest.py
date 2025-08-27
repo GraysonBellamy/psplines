@@ -1,8 +1,9 @@
 """
 Shared test fixtures and configuration for psplines tests.
 """
-import pytest
 import numpy as np
+import pytest
+
 from psplines.core import PSpline
 
 

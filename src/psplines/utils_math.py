@@ -11,10 +11,16 @@ Helper routines for P-spline smoothing:
 Based on Eilers & Marx (2021), eq. (2.15), and §8.5 heuristic.
 """
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
 import numpy as np
 import scipy.sparse as sp
 from scipy.sparse.linalg import factorized
-from numpy.typing import NDArray
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
 
 __all__ = ["effective_df"]
 
@@ -69,22 +75,22 @@ def effective_df(
     if W is None:
         W = sp.identity(B.shape[0], format="csr")
     if BtB is None:
-        BtB = B.T @ (W @ B)
+        BtB = B.T @ (W @ B)  # type: ignore[operator, attr-defined]
     if DtD is None:
-        DtD = D.T @ D
+        DtD = D.T @ D  # type: ignore[operator, attr-defined]
     # assemble system matrix A = BtB + λ DtD
     if np.isscalar(lambda_):
-        A = BtB + lambda_ * DtD
+        A = BtB + lambda_ * DtD  # type: ignore[operator, arg-type]
     else:
         # adaptive penalties
-        L = sp.diags(lambda_)
-        A = BtB + D.T @ (L @ D)
+        L = sp.diags(lambda_)  # type: ignore[arg-type]
+        A = BtB + D.T @ (L @ D)  # type: ignore[operator, attr-defined]
     nb = A.shape[0]
     # exact trace if size small and A is denseable
     if nb <= exact_thresh and not sp.issparse(A):
-        A_dense = A.toarray() if sp.issparse(A) else A
+        A_dense = A.toarray() if sp.issparse(A) else A  # type: ignore[union-attr, attr-defined]
         invA = np.linalg.inv(A_dense)
-        G = (BtB.toarray() if sp.issparse(BtB) else BtB) @ invA
+        G = (BtB.toarray() if sp.issparse(BtB) else BtB) @ invA  # type: ignore[union-attr, attr-defined]
         return float(np.trace(G))
     # stochastic Hutchinson estimator
     n = B.shape[0]
@@ -94,11 +100,11 @@ def effective_df(
     # generate random ±1 matrix Z (n x num_vectors)
     Z = rng.choice([-1.0, 1.0], size=(n, num_vectors))
     # compute B^T Z  => shape (nb x num_vectors)
-    BTZ = B.T @ Z
+    BTZ = B.T @ Z  # type: ignore[operator, attr-defined]
     # solve A X = BTZ => X shape (nb x num_vectors)
     X = np.column_stack([solve(BTZ[:, i]) for i in range(num_vectors)])
     # compute B X => (n x num_vectors)
-    BX = B @ X
+    BX = B @ X  # type: ignore[operator]
     # trace estimate = mean over random vectors of z_i^T (B X)_i
     trace_est = np.mean(np.einsum("ij,ij->j", Z, BX))
-    return max(0.0, trace_est)
+    return float(max(0.0, trace_est))

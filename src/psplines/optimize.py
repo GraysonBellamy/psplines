@@ -16,16 +16,21 @@ best lam, score = cross_validation(ps)
 
 from __future__ import annotations
 
-from typing import Callable, Tuple
 import warnings
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    import scipy.sparse as sp
+
+    from .core import PSpline
 
 import numpy as np
-import scipy.sparse as sp
-from scipy.sparse import vstack, hstack, csr_matrix
-from scipy.sparse.linalg import spsolve
 from scipy.optimize import minimize_scalar
+from scipy.sparse import csr_matrix, hstack, vstack
+from scipy.sparse.linalg import spsolve
 
-from .core import PSpline
 from .penalty import difference_matrix
 from .utils_math import effective_df
 
@@ -65,8 +70,8 @@ def _optimise_lambda(
     score_fn: Callable[
         [float, np.ndarray, float, np.ndarray, sp.spmatrix | None], float
     ],
-    bounds: Tuple[float, float],
-) -> Tuple[float, float]:
+    bounds: tuple[float, float],
+) -> tuple[float, float]:
     """
     Generic 1‑D bounded search over log10(lambda).
     score_fn(lam, coef, rss, Dcoef, C) must return criterion to minimize.
@@ -108,7 +113,7 @@ def _optimise_lambda(
 def cross_validation(
     pspline: PSpline,
     lambda_bounds: tuple[float, float] = (1e-6, 1e6),
-) -> Tuple[float, float]:
+) -> tuple[float, float]:
     """
     Find Lambda that minimizes GCV = (rss/n) / (1 - edf/n)^2.
     """
@@ -127,7 +132,7 @@ def cross_validation(
 def aic(
     pspline: PSpline,
     lambda_bounds: tuple[float, float] = (1e-6, 1e6),
-) -> Tuple[float, float]:
+) -> tuple[float, float]:
     """
     Find Lambda that minimizes AIC = n*log(rss/n) + 2*edf.
     """
@@ -146,7 +151,7 @@ def aic(
 def _sweep_lambda(
     ps: PSpline,
     lambda_grid: np.ndarray,
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Compute (log_rss, log_penalty) for each scalar Lambda in lambda_grid.
     Operates in sparse land.
@@ -277,7 +282,7 @@ def v_curve(
     pspline: PSpline,
     lambda_bounds: tuple[float, float] = (1e-6, 1e6),
     num_lambda: int = 81,
-) -> Tuple[float, float]:
+) -> tuple[float, float]:
     """
     Pick Lambda via minimum distance on V‑curve.
     """
@@ -297,7 +302,7 @@ def v_curve(
 
 
 # ----------------------------------------------------------------------------
-def _finish(ps: PSpline, lam: float, score: float) -> Tuple[float, float]:
+def _finish(ps: PSpline, lam: float, score: float) -> tuple[float, float]:
     """Update model with chosen Lambda and return (Lambda, score)."""
     ps.lambda_ = float(lam)
     ps.fit()
@@ -309,9 +314,9 @@ def _finish(ps: PSpline, lam: float, score: float) -> Tuple[float, float]:
 # -----------------------------------------------------------------------------
 def plot_diagnostics(
     pspline: PSpline,
-    lambda_bounds: Tuple[float, float] = (1e-6, 1e6),
+    lambda_bounds: tuple[float, float] = (1e-6, 1e6),
     num_lambda: int = 81,
-    which: Tuple[str, ...] | None = None,
+    which: tuple[str, ...] | None = None,
     show: bool = True,
 ) -> None:
     """

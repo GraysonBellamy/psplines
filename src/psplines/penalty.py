@@ -11,7 +11,7 @@ References: Eilers & Marx (2021), Section 2.3 & Appendix C.
 """
 
 import numpy as np
-from scipy.sparse import diags, csr_matrix
+from scipy.sparse import csr_matrix, diags
 from scipy.special import comb
 
 __all__ = ["difference_matrix"]

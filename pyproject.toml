@@ -44,5 +44,64 @@ dev = [
     "pytest>=8.4.1",
     "pytest-cov>=6.2.1",
     "ruff>=0.12.10",
+    "scipy-stubs>=1.15.3.0",
     "types-setuptools>=80.9.0.20250822",
 ]
+
+[tool.ruff]
+line-length = 88
+fix = true
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "C4", "SIM", "TCH"]
+ignore = ["E501"]  # Line length handled by formatter
+
+[tool.ruff.lint.per-file-ignores]
+"src/*" = ["N803", "N806"]  # Allow uppercase argument/variable names for matrices (B, D, etc.)
+"tests/*" = ["N803", "N806"]  # Allow non-lowercase argument/variable names in tests  
+"examples/*" = ["N803", "N806", "E402"]  # Allow non-lowercase names and imports not at top
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+install_types = true
+non_interactive = true
+ignore_missing_imports = false
+strict_optional = true
+show_error_codes = true
+
+[[tool.mypy.overrides]]
+module = [
+    "pymc",
+    "pymc.*",
+    "arviz",
+    "arviz.*", 
+    "joblib",
+    "joblib.*"
+]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--strict-markers --disable-warnings -v"
+markers = [
+    "slow: marks tests as slow",
+    "integration: marks tests as integration tests",
+]
+
+[tool.coverage.run]
+source = ["src"]
+omit = ["*/tests/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]
+show_missing = true
+skip_covered = false

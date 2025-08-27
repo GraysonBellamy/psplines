@@ -11,8 +11,8 @@ Leverages SciPy's BSpline for vectorized evaluation.
 
 import numpy as np
 import scipy.sparse as sp
-from scipy.interpolate import BSpline
 from numpy.typing import ArrayLike, NDArray
+from scipy.interpolate import BSpline
 
 __all__ = ["b_spline_basis", "b_spline_derivative_basis"]
 
