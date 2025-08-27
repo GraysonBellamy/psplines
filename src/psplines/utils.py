@@ -42,10 +42,10 @@ def plot_fit(pspline: PSpline, title: str = "P-spline Fit", subsample: int = 100
 
 
 def plot_derivatives(
-    pspline: PSpline, 
-    deriv_orders: list[int] | None = None, 
-    x_new: np.ndarray | None = None, 
-    title: str = "P-spline Derivatives", 
+    pspline: PSpline,
+    deriv_orders: list[int] | None = None,
+    x_new: np.ndarray | None = None,
+    title: str = "P-spline Derivatives",
     subsample: int = 1000
 ) -> None:
     """
@@ -63,7 +63,7 @@ def plot_derivatives(
     """
     if deriv_orders is None:
         deriv_orders = [1]
-    
+
     if pspline.B is None or pspline.coef is None:
         raise ValueError("Model not fitted. Call fit() first.")
 
