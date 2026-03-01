@@ -25,38 +25,27 @@ y = np.sin(x) + 0.1 * np.random.randn(50)
 spline = PSpline(x, y, nseg=15, lambda_=1.0)
 spline.fit()
 
-# Create basic plot
-fig, ax = plt.subplots(figsize=(10, 6))
-plot_fit(spline, ax=ax)
-plt.show()
+# Create basic plot (opens a new figure window)
+plot_fit(spline)
 ```
 
 ### Customized Plotting
 
 ```python
-# Plot with uncertainty and custom styling
-x_new = np.linspace(0, 2*np.pi, 200)
-fig, ax = plt.subplots(figsize=(12, 8))
-
-plot_fit(spline, x_new=x_new, show_se=True, ax=ax,
-         data_kws={'alpha': 0.6, 'color': 'darkblue'},
-         fit_kws={'color': 'red', 'linewidth': 2},
-         se_kws={'alpha': 0.2, 'color': 'red'})
-
-ax.set_title('P-Spline Fit with Uncertainty')
-ax.set_xlabel('x')
-ax.set_ylabel('y')
-plt.show()
+# Plot with custom title and subsampling
+plot_fit(spline, title="Sine Wave P-Spline Fit", subsample=500)
 ```
 
 ### Multiple Subplots
 
 ```python
 # Create comprehensive diagnostic plots
+x_new = np.linspace(0, 2*np.pi, 200)
 fig, axes = plt.subplots(2, 2, figsize=(15, 10))
 
-# Main fit plot
-plot_fit(spline, ax=axes[0, 0], show_se=True)
+# Main fit plot (manual since plot_fit uses global pyplot)
+axes[0, 0].scatter(spline.x, spline.y, c="grey", s=1, label="Data")
+axes[0, 0].plot(spline.x, spline.fitted_values, c="blue", lw=2, label="Fit")
 axes[0, 0].set_title('Data and Fit')
 
 # Residuals

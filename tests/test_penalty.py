@@ -1,6 +1,7 @@
 """
 Tests for psplines.penalty module.
 """
+
 import numpy as np
 import pytest
 import scipy.sparse as sp
@@ -72,9 +73,21 @@ class TestDifferenceMatrix:
 
     def test_invalid_parameters(self):
         """Test that invalid parameters raise appropriate errors."""
-        # This depends on the actual implementation
-        # The function should handle edge cases gracefully
-        pass  # Implementation-specific
+        with pytest.raises(ValueError, match="order must be non-negative"):
+            difference_matrix(5, order=-1)
+
+    def test_order_zero_returns_identity(self):
+        """Test that order=0 returns identity matrix."""
+        D = difference_matrix(5, order=0)
+        assert D.shape == (5, 5)
+        assert_allclose(D.toarray(), np.eye(5))
+
+    def test_order_exceeds_n(self):
+        """Test that order >= n returns empty matrix."""
+        D = difference_matrix(3, order=3)
+        assert D.shape == (0, 3)
+        D = difference_matrix(3, order=5)
+        assert D.shape == (0, 3)
 
     def test_sparsity_pattern(self):
         """Test that difference matrices are properly sparse."""

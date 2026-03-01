@@ -6,9 +6,8 @@ Helper routines for P-spline smoothing:
 
 - `effective_df`: exact or stochastic trace of smoother matrix via
   Hutchinson estimator, with LU factorization for many solves.
-- `curvature_to_lambda`: map local curvature to spatially varying λ.
 
-Based on Eilers & Marx (2021), eq. (2.15), and §8.5 heuristic.
+Based on Eilers & Marx (2021), eq. (2.15).
 """
 
 from __future__ import annotations
@@ -72,10 +71,8 @@ def effective_df(
         Estimated effective degrees of freedom (>=0).
     """
     # prepare weight and cross-products
-    if W is None:
-        W = sp.identity(B.shape[0], format="csr")
     if BtB is None:
-        BtB = B.T @ (W @ B)  # type: ignore[operator, attr-defined]
+        BtB = B.T @ B if W is None else B.T @ (W @ B)  # type: ignore[operator, attr-defined]
     if DtD is None:
         DtD = D.T @ D  # type: ignore[operator, attr-defined]
     # assemble system matrix A = BtB + λ DtD
@@ -86,8 +83,8 @@ def effective_df(
         L = sp.diags(lambda_)  # type: ignore[arg-type]
         A = BtB + D.T @ (L @ D)  # type: ignore[operator, attr-defined]
     nb = A.shape[0]
-    # exact trace if size small and A is denseable
-    if nb <= exact_thresh and not sp.issparse(A):
+    # exact trace if size small enough
+    if nb <= exact_thresh:
         A_dense = A.toarray() if sp.issparse(A) else A  # type: ignore[union-attr, attr-defined]
         invA = np.linalg.inv(A_dense)
         G = (BtB.toarray() if sp.issparse(BtB) else BtB) @ invA  # type: ignore[union-attr, attr-defined]

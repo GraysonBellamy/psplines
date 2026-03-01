@@ -2438,28 +2438,21 @@ wheels = [
 
 [[package]]
 name = "psplines"
-version = "0.1.3"
 source = { editable = "." }
 dependencies = [
-    { name = "arviz" },
     { name = "joblib" },
     { name = "matplotlib" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-    { name = "pymc", version = "5.25.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "pymc", version = "5.28.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-    { name = "pytensor", version = "2.31.7", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "pytensor", version = "2.38.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
 ]
 
 [package.optional-dependencies]
-dev = [
-    { name = "mypy" },
-    { name = "pytest" },
-    { name = "pytest-cov" },
-    { name = "ruff" },
+bayes = [
+    { name = "arviz" },
+    { name = "pymc", version = "5.25.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "pymc", version = "5.28.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
 ]
 
 [package.dev-dependencies]
@@ -2479,19 +2472,14 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "arviz", specifier = ">=0.12" },
+    { name = "arviz", marker = "extra == 'bayes'", specifier = ">=0.12" },
     { name = "joblib", specifier = ">=1.0" },
     { name = "matplotlib", specifier = ">=3.4" },
-    { name = "mypy", marker = "extra == 'dev'" },
-    { name = "numpy", specifier = ">=1.21" },
-    { name = "pymc", specifier = ">=5.0" },
-    { name = "pytensor", specifier = ">=2.0" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0" },
-    { name = "pytest-cov", marker = "extra == 'dev'" },
-    { name = "ruff", marker = "extra == 'dev'" },
-    { name = "scipy", specifier = ">=1.7" },
+    { name = "numpy", specifier = ">=1.24" },
+    { name = "pymc", marker = "extra == 'bayes'", specifier = ">=5.0" },
+    { name = "scipy", specifier = ">=1.9" },
 ]
-provides-extras = ["dev"]
+provides-extras = ["bayes"]
 
 [package.metadata.requires-dev]
 dev = [

@@ -1,11 +1,13 @@
 """
 Comprehensive tests for psplines.core module.
 """
+
 import numpy as np
 import pytest
 from numpy.testing import assert_allclose
 
 from psplines.core import PSpline
+from psplines.exceptions import FittingError, ValidationError
 
 
 class TestPSplineInitialization:
@@ -24,49 +26,53 @@ class TestPSplineInitialization:
 
     def test_empty_arrays(self):
         """Test that empty arrays raise ValueError."""
-        with pytest.raises(ValueError, match="Input arrays cannot be empty"):
+        with pytest.raises(ValidationError, match="Input arrays cannot be empty"):
             PSpline([], [])
 
     def test_mismatched_lengths(self):
         """Test that mismatched x and y lengths raise ValueError."""
-        with pytest.raises(ValueError, match="x and y must have the same length"):
+        with pytest.raises(ValidationError, match="x and y must have the same length"):
             PSpline([1, 2, 3], [1, 2])
 
     def test_insufficient_data_points(self):
         """Test that insufficient data points raise ValueError."""
-        with pytest.raises(ValueError, match="Need at least 2 data points"):
+        with pytest.raises(ValidationError, match="Need at least 2 data points"):
             PSpline([1], [1])
 
     def test_non_finite_values(self):
         """Test that non-finite values raise ValueError."""
-        with pytest.raises(ValueError, match="x contains non-finite values"):
+        with pytest.raises(ValidationError, match="x contains non-finite values"):
             PSpline([1, np.inf, 3], [1, 2, 3])
 
-        with pytest.raises(ValueError, match="y contains non-finite values"):
+        with pytest.raises(ValidationError, match="y contains non-finite values"):
             PSpline([1, 2, 3], [1, np.nan, 3])
 
     def test_non_unique_x_values(self):
         """Test that non-unique x values raise ValueError."""
-        with pytest.raises(ValueError, match="x must contain at least 2 unique values"):
+        with pytest.raises(
+            ValidationError, match="x must contain at least 2 unique values"
+        ):
             PSpline([1, 1, 1], [1, 2, 3])
 
     def test_invalid_parameters(self):
         """Test that invalid parameters raise ValueError."""
         x, y = [1, 2, 3], [1, 2, 3]
 
-        with pytest.raises(ValueError, match="nseg must be positive"):
+        with pytest.raises(ValidationError, match="nseg must be positive"):
             PSpline(x, y, nseg=-1)
 
-        with pytest.raises(ValueError, match="degree must be non-negative"):
+        with pytest.raises(ValidationError, match="degree must be non-negative"):
             PSpline(x, y, degree=-1)
 
-        with pytest.raises(ValueError, match="lambda_ must be positive"):
+        with pytest.raises(ValidationError, match="lambda_ must be positive"):
             PSpline(x, y, lambda_=-1)
 
-        with pytest.raises(ValueError, match="penalty_order must be >= 1"):
+        with pytest.raises(ValidationError, match="penalty_order must be >= 1"):
             PSpline(x, y, penalty_order=0)
 
-        with pytest.raises(ValueError, match="nseg .* must be greater than degree"):
+        with pytest.raises(
+            ValidationError, match="nseg .* must be greater than degree"
+        ):
             PSpline(x, y, nseg=2, degree=3)
 
 
@@ -105,13 +111,13 @@ class TestPSplineFitting:
         """Test that invalid domain boundaries raise ValueError."""
         spline = PSpline(self.x, self.y)
 
-        with pytest.raises(ValueError, match="xl must be finite"):
+        with pytest.raises(ValidationError, match="xl must be finite"):
             spline.fit(xl=np.inf)
 
-        with pytest.raises(ValueError, match="xl .* must be <= min\\(x\\)"):
+        with pytest.raises(ValidationError, match="xl .* must be <= min\\(x\\)"):
             spline.fit(xl=0.5)  # x starts at 0
 
-        with pytest.raises(ValueError, match="xr .* must be >= max\\(x\\)"):
+        with pytest.raises(ValidationError, match="xr .* must be >= max\\(x\\)"):
             spline.fit(xr=0.5)  # x goes to 1
 
         # Note: Testing xl >= xr is impossible with current validation logic since
@@ -164,7 +170,7 @@ class TestPSplinePrediction:
     def test_prediction_before_fitting(self):
         """Test that prediction fails before fitting."""
         unfitted_spline = PSpline(self.x, self.y)
-        with pytest.raises(RuntimeError, match="Model not fitted"):
+        with pytest.raises(FittingError, match="Model not fitted"):
             unfitted_spline.predict(self.x_new)
 
     def test_basic_prediction(self):
@@ -185,20 +191,22 @@ class TestPSplinePrediction:
 
     def test_prediction_input_validation(self):
         """Test prediction input validation."""
-        with pytest.raises(ValueError, match="x_new cannot be empty"):
+        with pytest.raises(ValidationError, match="x_new cannot be empty"):
             self.spline.predict([])
 
-        with pytest.raises(ValueError, match="x_new contains non-finite values"):
+        with pytest.raises(ValidationError, match="x_new contains non-finite values"):
             self.spline.predict([0.5, np.nan])
 
-        with pytest.raises(ValueError, match="derivative_order must be positive"):
+        with pytest.raises(ValidationError, match="derivative_order must be positive"):
             self.spline.predict(self.x_new, derivative_order=0)
 
-        with pytest.raises(ValueError, match="se_method must be"):
+        with pytest.raises(ValidationError, match="se_method must be"):
             self.spline.predict(self.x_new, se_method="invalid")
 
-        with pytest.raises(ValueError, match="B_boot must be positive"):
-            self.spline.predict(self.x_new, se_method="bootstrap", return_se=True, B_boot=-1)
+        with pytest.raises(ValidationError, match="B_boot must be positive"):
+            self.spline.predict(
+                self.x_new, se_method="bootstrap", return_se=True, B_boot=-1
+            )
 
     def test_prediction_consistency(self):
         """Test that predictions are consistent with fitted values."""
@@ -220,7 +228,7 @@ class TestPSplineDerivatives:
     def test_derivative_before_fitting(self):
         """Test that derivative fails before fitting."""
         unfitted_spline = PSpline(self.x, self.y)
-        with pytest.raises(RuntimeError, match="Model not fitted"):
+        with pytest.raises(FittingError, match="Model not fitted"):
             unfitted_spline.derivative(self.x_new)
 
     def test_first_derivative(self):
@@ -247,10 +255,10 @@ class TestPSplineDerivatives:
 
     def test_derivative_input_validation(self):
         """Test derivative input validation."""
-        with pytest.raises(ValueError, match="x_new cannot be empty"):
+        with pytest.raises(ValidationError, match="x_new cannot be empty"):
             self.spline.derivative([])
 
-        with pytest.raises(ValueError, match="deriv_order must be positive"):
+        with pytest.raises(ValidationError, match="deriv_order must be positive"):
             self.spline.derivative(self.x_new, deriv_order=0)
 
     def test_derivative_approximation_quality(self):
@@ -328,6 +336,98 @@ class TestPSplineTypes:
         spline3 = PSpline([0, 1, 2, 3], [0.0, 1.0, 4.0, 9.0])
         spline3.fit()
         assert spline3.coef is not None
+
+
+class TestPSplineWeights:
+    """Test observation weights functionality (eq. 2.3, 2.6-2.7, 2.15-2.16)."""
+
+    def setup_method(self):
+        np.random.seed(42)
+        self.x = np.linspace(0, 1, 50)
+        self.y = np.sin(2 * np.pi * self.x) + 0.1 * np.random.randn(50)
+
+    def test_uniform_weights_match_unweighted(self):
+        """Uniform weights=1 should produce identical results to no weights."""
+        ps_no_w = PSpline(self.x, self.y, nseg=15).fit()
+        ps_w1 = PSpline(self.x, self.y, nseg=15, weights=np.ones(50)).fit()
+
+        assert_allclose(ps_w1.coef, ps_no_w.coef, rtol=1e-12)
+        assert_allclose(ps_w1.ED, ps_no_w.ED, rtol=1e-12)
+        assert_allclose(ps_w1.sigma2, ps_no_w.sigma2, rtol=1e-12)
+        assert_allclose(ps_w1.se_fitted, ps_no_w.se_fitted, rtol=1e-12)
+
+    def test_nonuniform_weights_differ(self):
+        """Non-uniform weights should produce different coefficients."""
+        ps_no_w = PSpline(self.x, self.y, nseg=15).fit()
+        w = 1.0 + 5.0 * self.x  # heavier weight on right side
+        ps_w = PSpline(self.x, self.y, nseg=15, weights=w).fit()
+
+        # Coefficients and ED should differ
+        assert not np.allclose(ps_w.coef, ps_no_w.coef)
+        assert ps_w.ED != ps_no_w.ED
+
+    def test_zero_weight_missing_data(self):
+        """Zero weights should interpolate through gap (eq. 2.8)."""
+        y_gap = self.y.copy()
+        w = np.ones(50)
+        # Create a gap in the middle — set dummy y values and zero weights
+        gap = slice(20, 30)
+        y_gap[gap] = 999.0  # dummy values that should be ignored
+        w[gap] = 0.0
+
+        ps = PSpline(self.x, y_gap, nseg=20, weights=w).fit()
+
+        # Fitted values in the gap should NOT be near 999
+        assert np.all(np.abs(ps.fitted_values[gap] - 999.0) > 100)
+        # Fitted values in the gap should be smooth (close to sin curve)
+        expected = np.sin(2 * np.pi * self.x[gap])
+        assert_allclose(ps.fitted_values[gap], expected, atol=0.5)
+
+    def test_zero_weight_prediction_se(self):
+        """Weighted fit should produce valid SEs."""
+        w = np.ones(50)
+        w[20:30] = 0.0
+        ps = PSpline(self.x, self.y, nseg=15, weights=w).fit()
+
+        x_new = np.linspace(0.1, 0.9, 20)
+        y_pred, se = ps.predict(x_new, return_se=True)
+
+        assert y_pred.shape == (20,)
+        assert se.shape == (20,)
+        assert np.all(se > 0)
+        assert np.all(np.isfinite(se))
+
+    def test_weights_wrong_length(self):
+        with pytest.raises(ValidationError, match="weights must have the same length"):
+            PSpline(self.x, self.y, weights=np.ones(10))
+
+    def test_weights_negative(self):
+        w = np.ones(50)
+        w[5] = -1.0
+        with pytest.raises(ValidationError, match="weights must be non-negative"):
+            PSpline(self.x, self.y, weights=w)
+
+    def test_weights_nan(self):
+        w = np.ones(50)
+        w[5] = np.nan
+        with pytest.raises(ValidationError, match="weights contains non-finite"):
+            PSpline(self.x, self.y, weights=w)
+
+    def test_weights_inf(self):
+        w = np.ones(50)
+        w[5] = np.inf
+        with pytest.raises(ValidationError, match="weights contains non-finite"):
+            PSpline(self.x, self.y, weights=w)
+
+    def test_cross_validation_with_weights(self):
+        """cross_validation should work with weighted PSpline."""
+        from psplines.optimize import cross_validation
+
+        w = 1.0 + self.x
+        ps = PSpline(self.x, self.y, nseg=15, weights=w)
+        lam, score = cross_validation(ps)
+        assert lam > 0
+        assert np.isfinite(score)
 
 
 if __name__ == "__main__":

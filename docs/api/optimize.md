@@ -24,6 +24,11 @@ The optimize module provides functions for automatic selection of the smoothing 
       show_source: true
       heading_level: 3
 
+::: psplines.optimize.variable_penalty_cv
+    options:
+      show_source: true
+      heading_level: 3
+
 ## Usage Examples
 
 ### Cross-Validation (Recommended)
@@ -57,6 +62,28 @@ best_lambda, aic_score = aic(spline)
 print(f"Optimal λ: {best_lambda:.6f}, AIC: {aic_score:.6f}")
 ```
 
+### GLM Models (Poisson, Binomial)
+
+All optimizers work with GLM P-splines. For non-Gaussian families, scoring uses
+deviance instead of RSS, and each candidate λ requires a full IRLS convergence:
+
+```python
+# Poisson P-spline with AIC-optimal lambda
+counts = np.random.poisson(np.exp(np.sin(x)), 100)
+spline_pois = PSpline(x, counts, nseg=20, family="poisson")
+best_lambda, aic_score = aic(spline_pois)
+spline_pois.lambda_ = best_lambda
+spline_pois.fit()
+
+# Binomial P-spline with cross-validation
+trials = np.full(100, 20)
+successes = np.random.binomial(trials, 1 / (1 + np.exp(-2 * np.sin(x))))
+spline_bin = PSpline(x, successes, nseg=20, family="binomial", trials=trials)
+best_lambda, cv_score = cross_validation(spline_bin)
+spline_bin.lambda_ = best_lambda
+spline_bin.fit()
+```
+
 ### L-Curve Method
 
 ```python
@@ -65,6 +92,35 @@ from psplines.optimize import l_curve
 # Find optimal lambda using L-curve
 best_lambda, curvature = l_curve(spline)
 print(f"Optimal λ: {best_lambda:.6f}, Curvature: {curvature:.6f}")
+```
+
+### Variable Penalty Parameter Selection
+
+When using exponentially varying penalty weights (§8.8), `variable_penalty_cv`
+performs a 2-D grid search over $(\lambda, \gamma)$:
+
+```python
+from psplines.optimize import variable_penalty_cv
+
+# Fit an initial spline (required for basis info)
+spline = PSpline(x, y, nseg=20)
+spline.fit()
+
+# 2-D grid search for best (λ, γ) using GCV
+best_lambda, best_gamma, best_score, scores = variable_penalty_cv(
+    spline,
+    gamma_range=(-10, 10),
+    lambda_bounds=(1e-4, 1e4),
+    num_gamma=41,
+    num_lambda=41,
+    criterion="gcv",
+)
+print(f"Optimal λ={best_lambda:.4f}, γ={best_gamma:.2f}")
+
+# Apply the optimal parameters
+spline.lambda_ = best_lambda
+spline.penalty_gamma = best_gamma
+spline.fit()
 ```
 
 ### Comparing Methods
@@ -129,10 +185,14 @@ where:
 - $\hat{\sigma}^2 = \|y - S_\lambda y\|^2 / n$ is the residual variance
 - $\text{ED}(\lambda) = \text{tr}(S_\lambda)$ is the effective degrees of freedom
 
+For GLM families (Poisson, Binomial), AIC uses deviance instead of RSS:
+$$\text{AIC}(\lambda) = \text{Dev}(\lambda) + 2 \cdot \text{ED}(\lambda)$$
+
 **Advantages**:
 - Information-theoretic foundation
 - Fast computation
 - Good for model comparison
+- Works with both Gaussian and GLM families
 
 **Disadvantages**:
 - May not work well for all noise levels
@@ -159,6 +219,17 @@ where $\rho(\lambda) = \log(\|y - B\alpha_\lambda\|^2)$ and $\eta(\lambda) = \lo
 ### V-Curve Method
 
 Similar to L-curve but uses different scaling and looks for valley shape.
+
+### Variable Penalty Selection (§8.8)
+
+For the exponential variable penalty $P(\gamma) = D^T\text{diag}(e^{\gamma j/m})D$,
+`variable_penalty_cv` evaluates GCV (or AIC) over a 2-D grid of
+$(\lambda, \gamma)$ values and returns the combination that minimises the criterion:
+
+$$(\hat\lambda, \hat\gamma) = \arg\min_{\lambda, \gamma} \text{GCV}(\lambda, \gamma)$$
+
+This adds a single extra hyperparameter $\gamma$ that controls the spatial
+distribution of the penalty weight while $\lambda$ controls overall smoothness.
 
 ## Implementation Details
 

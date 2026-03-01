@@ -101,7 +101,7 @@ Make clear, descriptive commit messages:
 git add .
 git commit -m "Add cross-validation method for parameter selection
 
-- Implement k-fold and leave-one-out CV
+- Implement GCV, AIC, L-curve, and V-curve methods
 - Add comprehensive tests
 - Update documentation with examples"
 ```
@@ -266,8 +266,8 @@ class TestPSpline:
         spline.fit()
         
         # Check basic properties
-        assert spline.alpha is not None
-        assert len(spline.alpha) == spline.nb
+        assert spline.coef is not None
+        assert len(spline.coef) == spline.B.shape[1]
         assert spline.ED > 0
         assert spline.sigma2 > 0
     
@@ -442,8 +442,16 @@ psplines/
 │   ├── basis.py           # B-spline basis functions
 │   ├── penalty.py         # Penalty matrices
 │   ├── optimize.py        # Parameter optimization
-│   └── utils.py           # Utility functions
+│   ├── glm.py             # GLM family/link abstractions (Poisson, Binomial)
+│   ├── density.py         # Density estimation via Poisson P-splines
+│   ├── exceptions.py      # Custom exception classes
+│   ├── utils.py           # Utility functions
+│   └── utils_math.py      # Mathematical helper functions
 ├── tests/                  # Test suite
+│   ├── test_core.py       # Core PSpline tests
+│   ├── test_glm.py        # GLM family and density tests
+│   ├── test_penalty.py    # Penalty matrix tests
+│   └── conftest.py        # Shared test fixtures
 ├── docs/                   # Documentation source
 ├── examples/               # Example scripts
 ├── pyproject.toml          # Project configuration

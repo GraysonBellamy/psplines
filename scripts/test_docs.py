@@ -35,7 +35,10 @@ def main():
     tests = [
         ("mkdocs --version", "Check MkDocs installation"),
         ("mkdocs build --strict", "Build documentation"),
-        ("python -c \"import psplines; print('PSplines import successful')\"", "Test PSplines import"),
+        (
+            "python -c \"import psplines; print('PSplines import successful')\"",
+            "Test PSplines import",
+        ),
     ]
 
     # Additional checks
@@ -46,7 +49,7 @@ def main():
         "docs/api/core.md",
         "docs/user-guide/getting-started.md",
         "docs/tutorials/basic-usage.md",
-        "docs/examples/gallery.md"
+        "docs/examples/gallery.md",
     ]
 
     for file_path in required_files:

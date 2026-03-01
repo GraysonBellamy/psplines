@@ -118,10 +118,13 @@ d2y_dx2, se = spline.derivative(x_new, deriv_order=2, return_se=True)
 
 #### Bayesian Inference
 ```python
-# Fit Bayesian model
+# Standard Bayesian P-spline (single λ, §3.5)
 trace = spline.bayes_fit(draws=2000, tune=1000)
 
-# Get posterior credible intervals
+# Adaptive Bayesian P-spline (per-difference λ_j, §8.8)
+trace = spline.bayes_fit(draws=2000, tune=1000, adaptive=True)
+
+# Get posterior credible intervals (works with either mode)
 mean, lower, upper = spline.predict(x_new, se_method="bayes", hdi_prob=0.95)
 ```
 

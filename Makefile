@@ -1,7 +1,7 @@
 # PSplines Makefile
 # Common development and documentation tasks
 
-.PHONY: help docs docs-serve docs-build docs-clean test lint format install dev-install
+.PHONY: help docs docs-serve docs-build docs-clean test test-cov lint format typecheck check examples clean build dev install dev-install ci
 
 # Default target
 help:

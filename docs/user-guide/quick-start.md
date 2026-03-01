@@ -151,6 +151,23 @@ spline.fit()
 trend = spline.predict(x_numeric)
 ```
 
+### Shape-Constrained Smoothing
+```python
+# Enforce monotone increasing fit
+spline = PSpline(x, y, nseg=20, lambda_=1.0,
+                 shape=[{"type": "increasing"}])
+spline.fit()
+# The fitted curve is guaranteed to be non-decreasing
+```
+
+### Adaptive Penalty (Spatially Varying Smoothness)
+```python
+# Let different regions have different amounts of smoothness
+spline = PSpline(x, y, nseg=20, lambda_=1.0,
+                 adaptive=True, adaptive_nseg=10)
+spline.fit()
+```
+
 ## Parameter Selection Guide
 
 ### Quick Rules of Thumb

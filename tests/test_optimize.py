@@ -1,6 +1,7 @@
 """
 Tests for psplines.optimize module.
 """
+
 import numpy as np
 import pytest
 
@@ -30,7 +31,9 @@ class TestCrossValidation:
     def test_cross_validation_with_range(self):
         """Test cross-validation with specified lambda bounds."""
         lambda_bounds = (1e-2, 1e2)
-        best_lambda, best_score = cross_validation(self.spline, lambda_bounds=lambda_bounds)
+        best_lambda, best_score = cross_validation(
+            self.spline, lambda_bounds=lambda_bounds
+        )
 
         assert lambda_bounds[0] <= best_lambda <= lambda_bounds[1]
 

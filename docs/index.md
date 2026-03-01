@@ -9,10 +9,14 @@
 ## Key Features
 
 - **Fast Sparse Implementation**: Uses SciPy sparse matrices and optimized solvers
-- **Multiple Uncertainty Methods**: Analytical (delta method), bootstrap, and Bayesian approaches  
+- **GLM Families**: Poisson (log link) and Binomial (logit link) P-splines via IRLS, with exposure offsets and grouped trials
+- **Density Estimation**: Smooth density estimation from raw data via Poisson P-splines
+- **Shape Constraints**: Monotonicity, convexity, concavity, and non-negativity enforcement via asymmetric penalties (§8.7), with optional selective domain constraints
+- **Adaptive & Variable Penalties**: Exponential variable weights and nonparametric adaptive per-difference weights for spatially varying smoothness (§8.8)
+- **Multiple Uncertainty Methods**: Analytical (delta method), bootstrap, and Bayesian approaches
 - **Flexible Configuration**: Customizable basis functions, penalty orders, and constraints
 - **Derivative Computation**: Efficient computation of spline derivatives with uncertainty
-- **Automatic Parameter Selection**: Cross-validation, AIC, L-curve, and V-curve methods
+- **Automatic Parameter Selection**: Cross-validation, AIC, L-curve, V-curve, and 2-D variable-penalty search for Gaussian and GLM models
 - **Boundary Constraints**: Support for derivative boundary conditions
 - **Comprehensive Validation**: Extensive input validation and error handling
 
@@ -92,8 +96,11 @@ PSplines are ideal for:
 
 - **Signal processing**: Noise reduction and trend extraction
 - **Time series analysis**: Smooth trend estimation and forecasting
-- **Scientific computing**: Data smoothing and derivative estimation  
+- **Scientific computing**: Data smoothing and derivative estimation
 - **Statistics**: Nonparametric regression and curve fitting
+- **Count data**: Smooth Poisson regression for event counts and rates
+- **Binary/proportion data**: Smooth logistic regression via binomial P-splines
+- **Density estimation**: Smooth density estimates from raw observations
 - **Engineering**: Control system design and signal analysis
 
 ## Performance

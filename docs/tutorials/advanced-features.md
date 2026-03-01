@@ -140,65 +140,213 @@ plt.show()
 ### Value Constraints
 
 ```python
-# Demonstrate monotonicity constraints conceptually
-def demonstrate_monotonicity():
-    """
-    Show how monotonicity constraints would work conceptually.
-    """
-    # Generate monotonic data with noise
-    x_mono = np.linspace(0, 5, 50)
-    y_true_mono = np.log(x_mono + 1) + 0.5 * x_mono
-    y_mono = y_true_mono + 0.2 * np.random.randn(50)
-    
-    # Unconstrained fit
-    spline_mono = PSpline(x_mono, y_mono, nseg=20)
-    opt_lambda, _ = cross_validation(spline_mono)
-    spline_mono.lambda_ = opt_lambda
-    spline_mono.fit()
-    
-    # Evaluation
-    x_eval_mono = np.linspace(0, 5, 100)
-    y_pred_mono = spline_mono.predict(x_eval_mono)
-    dy_dx_mono = spline_mono.derivative(x_eval_mono, deriv_order=1)
-    
-    # Check monotonicity
-    is_monotonic = np.all(dy_dx_mono >= 0)
-    violations = np.sum(dy_dx_mono < 0)
-    
-    plt.figure(figsize=(12, 8))
-    
-    plt.subplot(2, 1, 1)
-    plt.scatter(x_mono, y_mono, alpha=0.6, s=30, label='Data')
-    plt.plot(x_eval_mono, y_pred_mono, 'r-', linewidth=2, label='P-spline fit')
-    plt.plot(x_eval_mono, np.log(x_eval_mono + 1) + 0.5 * x_eval_mono, 'g--', 
-             linewidth=2, label='True monotonic function')
-    plt.title(f'Monotonic Data Fit (Violations: {violations}/{len(dy_dx_mono)})')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    
-    plt.subplot(2, 1, 2)
-    plt.plot(x_eval_mono, dy_dx_mono, 'r-', linewidth=2, label="f'(x)")
-    plt.axhline(y=0, color='black', linestyle='--', alpha=0.7, label='y=0')
-    negative_regions = dy_dx_mono < 0
-    if np.any(negative_regions):
-        plt.fill_between(x_eval_mono, 0, dy_dx_mono, where=negative_regions, 
-                        alpha=0.3, color='red', label='Violations')
-    plt.title('First Derivative (Should be ≥ 0 for monotonicity)')
-    plt.xlabel('x')
-    plt.ylabel("f'(x)")
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    plt.show()
-    
-    print(f"Monotonicity check: {'PASSED' if is_monotonic else 'FAILED'}")
-    print(f"Derivative violations: {violations}/{len(dy_dx_mono)}")
-    print(f"Minimum derivative: {np.min(dy_dx_mono):.4f}")
-    
-    return spline_mono
+# Monotone increasing fit using shape constraints (§8.7)
+x_mono = np.linspace(0, 5, 60)
+y_true_mono = np.log(x_mono + 1) + 0.5 * x_mono
+y_mono = y_true_mono + 0.3 * np.random.randn(60)
 
-spline_mono = demonstrate_monotonicity()
+# Unconstrained fit for comparison
+spline_free = PSpline(x_mono, y_mono, nseg=20)
+opt_lambda, _ = cross_validation(spline_free)
+spline_free.lambda_ = opt_lambda
+spline_free.fit()
+
+# Shape-constrained fit: enforce monotone increasing
+spline_mono = PSpline(x_mono, y_mono, nseg=20, lambda_=opt_lambda,
+                      shape=[{"type": "increasing"}])
+spline_mono.fit()
+
+x_eval = np.linspace(0, 5, 200)
+dy_free = spline_free.derivative(x_eval, deriv_order=1)
+dy_mono = spline_mono.derivative(x_eval, deriv_order=1)
+
+plt.figure(figsize=(14, 5))
+
+plt.subplot(1, 2, 1)
+plt.scatter(x_mono, y_mono, alpha=0.5, s=20, label='Data')
+plt.plot(x_eval, spline_free.predict(x_eval), 'r-', label='Unconstrained')
+plt.plot(x_eval, spline_mono.predict(x_eval), 'b-', label='Monotone constrained')
+plt.legend(); plt.title('Fits')
+
+plt.subplot(1, 2, 2)
+plt.plot(x_eval, dy_free, 'r-', label="Unconstrained f'")
+plt.plot(x_eval, dy_mono, 'b-', label="Monotone f'")
+plt.axhline(0, color='k', ls='--', alpha=0.5)
+plt.legend(); plt.title('First Derivatives')
+
+plt.tight_layout()
+plt.show()
+
+print(f"Unconstrained: min derivative = {dy_free.min():.4f}")
+print(f"Constrained:   min derivative = {dy_mono.min():.4f}")
+```
+
+## Shape Constraints (§8.7)
+
+Shape constraints use an asymmetric penalty to enforce monotonicity, convexity,
+concavity, or non-negativity of the fitted curve—with optional selective domains.
+
+### All Constraint Types
+
+```python
+from psplines.penalty import VALID_SHAPE_TYPES
+
+print("Available shape types:", sorted(VALID_SHAPE_TYPES))
+# ['concave', 'convex', 'decreasing', 'increasing', 'nonneg']
+```
+
+### Combined Constraints
+
+You can stack multiple constraints for simultaneous enforcement:
+
+```python
+# Increasing AND concave (classic saturating curve)
+x = np.linspace(0, 10, 80)
+y = np.sqrt(x) + 0.15 * np.random.randn(80)
+
+spline = PSpline(x, y, nseg=25, lambda_=1.0,
+                 shape=[{"type": "increasing"},
+                        {"type": "concave"}])
+spline.fit()
+
+x_eval = np.linspace(0, 10, 200)
+plt.scatter(x, y, alpha=0.5, s=20, label='Data')
+plt.plot(x_eval, spline.predict(x_eval), 'r-', linewidth=2,
+         label='Increasing + Concave')
+plt.legend()
+plt.title('Combined Shape Constraints')
+plt.show()
+```
+
+### Selective Domain Constraints
+
+Apply a constraint only in a sub-range of $x$:
+
+```python
+# Function that increases up to x=5, then levels off
+x = np.linspace(0, 10, 100)
+y_true = np.where(x < 5, x, 5.0) + 0.2 * np.random.randn(100)
+
+# Only enforce monotonicity for x ∈ [0, 5]
+spline = PSpline(x, y_true, nseg=30, lambda_=1.0,
+                 shape=[{"type": "increasing",
+                         "domain": (0.0, 5.0)}])
+spline.fit()
+
+x_eval = np.linspace(0, 10, 200)
+plt.scatter(x, y_true, alpha=0.5, s=20)
+plt.plot(x_eval, spline.predict(x_eval), 'r-', linewidth=2)
+plt.axvline(5, color='gray', ls='--', alpha=0.5, label='Constraint boundary')
+plt.legend()
+plt.title('Selective Domain: Increasing for x ≤ 5 only')
+plt.show()
+```
+
+### Shape Constraints with GLM Families
+
+Shape constraints work with Poisson and Binomial models too:
+
+```python
+# Monotone Poisson P-spline
+x = np.linspace(0, 5, 80)
+counts = np.random.poisson(np.exp(0.3 * x), 80)
+
+spline = PSpline(x, counts, nseg=20, lambda_=10.0, family="poisson",
+                 shape=[{"type": "increasing"}])
+spline.fit()
+
+mu_hat = spline.predict(np.linspace(0, 5, 200))
+```
+
+## Adaptive and Variable Penalties (§8.8)
+
+Standard P-splines apply the same penalty uniformly. When the underlying
+function has regions of different complexity, adaptive or variable penalties
+can improve the fit.
+
+### Exponential Variable Penalty
+
+The `penalty_gamma` parameter applies exponentially varying weights
+$v_j = \exp(\gamma j/m)$:
+
+```python
+# Simulate a function that is smooth on the left and wiggly on the right
+x = np.linspace(0, 10, 150)
+y_true = np.where(x < 5, 0.5*x, 0.5*x + np.sin(5*x))
+y = y_true + 0.3 * np.random.randn(150)
+
+# Standard fit
+spline_std = PSpline(x, y, nseg=30, lambda_=1.0)
+spline_std.fit()
+
+# Variable penalty: lighter penalty on the right (γ < 0)
+spline_var = PSpline(x, y, nseg=30, lambda_=1.0, penalty_gamma=-5.0)
+spline_var.fit()
+
+x_eval = np.linspace(0, 10, 300)
+plt.figure(figsize=(12, 5))
+plt.scatter(x, y, alpha=0.3, s=10, color='gray')
+plt.plot(x_eval, y_true[0:1].repeat(300) if False else
+         np.where(x_eval < 5, 0.5*x_eval, 0.5*x_eval + np.sin(5*x_eval)),
+         'g--', label='True')
+plt.plot(x_eval, spline_std.predict(x_eval), 'r-', label='Standard penalty')
+plt.plot(x_eval, spline_var.predict(x_eval), 'b-', label='Variable penalty (γ=-5)')
+plt.legend()
+plt.title('Variable Penalty: Lighter Smoothing on the Right')
+plt.show()
+```
+
+### Automatic (λ, γ) Selection
+
+Use `variable_penalty_cv` to find the optimal pair via a 2-D grid search:
+
+```python
+from psplines.optimize import variable_penalty_cv
+
+spline = PSpline(x, y, nseg=30)
+spline.fit()
+
+best_lam, best_gam, best_score, scores = variable_penalty_cv(
+    spline,
+    gamma_range=(-10, 10),
+    lambda_bounds=(1e-3, 1e3),
+    num_gamma=31,
+    num_lambda=31,
+    criterion="gcv",
+)
+print(f"Optimal λ = {best_lam:.4f}, γ = {best_gam:.2f}, GCV = {best_score:.6f}")
+
+# Visualise the GCV surface
+import matplotlib.pyplot as plt
+plt.imshow(scores, aspect='auto', origin='lower',
+           extent=[np.log10(1e-3), np.log10(1e3), -10, 10])
+plt.colorbar(label='GCV')
+plt.xlabel('log₁₀(λ)')
+plt.ylabel('γ')
+plt.title('Variable Penalty GCV Surface')
+plt.show()
+```
+
+### Nonparametric Adaptive Penalty
+
+The `adaptive=True` mode estimates per-difference weights from the data.
+A secondary B-spline basis models the log-residuals, producing spatially
+varying penalty weights $w_j$:
+
+```python
+# Adaptive smoothing
+spline_adapt = PSpline(x, y, nseg=30, lambda_=1.0,
+                       adaptive=True, adaptive_nseg=10,
+                       adaptive_lambda=100.0)
+spline_adapt.fit()
+
+x_eval = np.linspace(0, 10, 300)
+plt.scatter(x, y, alpha=0.3, s=10, color='gray')
+plt.plot(x_eval, spline_adapt.predict(x_eval), 'b-', linewidth=2,
+         label='Adaptive penalty')
+plt.legend()
+plt.title('Nonparametric Adaptive Penalty')
+plt.show()
 ```
 
 ## Different Penalty Orders
@@ -736,34 +884,236 @@ def multiscale_demo():
 multiscale_demo()
 ```
 
+## Observation Weights
+
+Observation weights let you control how much each data point influences the fit.
+The normal equations become $(B'WB + \lambda D'D)\alpha = B'Wy$ where $W = \text{diag}(w)$.
+
+### Heteroscedastic Data
+
+When observations have unequal precision, use weights proportional to the
+inverse variance (or any measure of reliability):
+
+```python
+import numpy as np
+from psplines import PSpline
+
+np.random.seed(42)
+x = np.linspace(0, 1, 100)
+# Noise increases with x
+noise_sd = 0.05 + 0.4 * x
+y = np.sin(2 * np.pi * x) + noise_sd * np.random.randn(100)
+
+# Weight inversely proportional to variance
+weights = 1.0 / noise_sd**2
+
+spline_unweighted = PSpline(x, y, nseg=20, lambda_=1.0).fit()
+spline_weighted = PSpline(x, y, nseg=20, lambda_=1.0, weights=weights).fit()
+
+# The weighted fit trusts the low-noise (left) region more
+print(f"Unweighted ED: {spline_unweighted.ED:.1f}")
+print(f"Weighted ED:   {spline_weighted.ED:.1f}")
+```
+
+### Missing Data via Zero Weights
+
+Setting $w_i = 0$ removes an observation from the fit entirely. The penalty
+interpolates smoothly through the gap — no special handling required:
+
+```python
+x = np.linspace(0, 1, 100)
+y = np.sin(2 * np.pi * x) + 0.1 * np.random.randn(100)
+
+# Mark a contiguous block as missing
+weights = np.ones(100)
+weights[40:60] = 0.0
+y[40:60] = 999.0  # dummy values — ignored because w=0
+
+spline = PSpline(x, y, nseg=20, weights=weights).fit()
+
+# Fitted values in the gap are smooth interpolations, not 999
+print(f"Fit at gap midpoint: {spline.fitted_values[50]:.3f}")
+print(f"True value:          {np.sin(2 * np.pi * x[50]):.3f}")
+```
+
+With a second-order penalty, the interpolation through the gap is cubic in the
+coefficient indices (degree $2d - 1$ where $d$ is the penalty order).
+
+### Weights with Automatic Lambda Selection
+
+All optimizers (`cross_validation`, `aic`, `l_curve`, `v_curve`) respect
+observation weights automatically:
+
+```python
+from psplines.optimize import cross_validation
+
+weights = 1.0 + 5.0 * x  # emphasize right side
+spline = PSpline(x, y, nseg=20, weights=weights)
+optimal_lambda, score = cross_validation(spline)
+print(f"Optimal lambda: {optimal_lambda:.4f}")
+```
+
+## GLM P-Splines
+
+P-splines extend beyond Gaussian responses to count and binary data via GLM families.
+
+### Poisson Smoothing (Count Data)
+
+```python
+import numpy as np
+from psplines import PSpline
+
+# Simulate event counts
+np.random.seed(42)
+x = np.linspace(0, 10, 80)
+true_rate = np.exp(1 + 0.5 * np.sin(x))
+counts = np.random.poisson(true_rate)
+
+# Fit Poisson P-spline (log link)
+spline = PSpline(x, counts, nseg=20, lambda_=100, family="poisson")
+spline.fit()
+
+x_eval = np.linspace(0, 10, 200)
+mu_hat = spline.predict(x_eval)  # positive fitted rates
+
+# Confidence intervals (asymmetric, always positive)
+mu_hat, lower, upper = spline.predict(x_eval, return_se=True)
+
+import matplotlib.pyplot as plt
+plt.scatter(x, counts, alpha=0.5, label="Counts")
+plt.plot(x_eval, mu_hat, "r-", label="Poisson P-spline")
+plt.fill_between(x_eval, lower, upper, alpha=0.3, color="red")
+plt.plot(x_eval, np.exp(1 + 0.5 * np.sin(x_eval)), "g--", label="True rate")
+plt.legend()
+plt.show()
+```
+
+### Poisson with Exposure Offsets
+
+For rate modeling where observations have different exposures (e.g., population at risk):
+
+```python
+# mu = exp(B*alpha) * exposure  =>  log(mu) = B*alpha + log(exposure)
+exposure = np.random.uniform(100, 1000, len(x))
+rate_counts = np.random.poisson(true_rate * exposure / 500)
+
+spline = PSpline(x, rate_counts, family="poisson", offset=np.log(exposure),
+                 nseg=20, lambda_=100)
+spline.fit()
+```
+
+### Binomial Smoothing (Binary/Proportion Data)
+
+```python
+# Dose-response curve
+dose = np.linspace(0, 10, 60)
+true_prob = 1 / (1 + np.exp(-(dose - 5)))
+
+# Bernoulli response (y in {0, 1})
+y_binary = np.random.binomial(1, true_prob)
+spline = PSpline(dose, y_binary, nseg=15, lambda_=10, family="binomial")
+spline.fit()
+
+# Fitted probabilities in [0, 1]
+dose_eval = np.linspace(0, 10, 200)
+pi_hat = spline.predict(dose_eval)
+
+plt.scatter(dose, y_binary, alpha=0.3, label="Binary response")
+plt.plot(dose_eval, pi_hat, "r-", label="Binomial P-spline")
+plt.plot(dose_eval, 1 / (1 + np.exp(-(dose_eval - 5))), "g--", label="True prob")
+plt.legend()
+plt.show()
+```
+
+### Grouped Binomial
+
+When you observe $y$ successes out of $t$ trials:
+
+```python
+trials = np.full(60, 25)
+successes = np.random.binomial(trials, true_prob)
+
+spline = PSpline(dose, successes, family="binomial", trials=trials, nseg=15)
+spline.fit()
+
+# predict returns estimated probabilities (mu/trials on response scale)
+pi_hat = spline.predict(dose_eval)
+```
+
+### Density Estimation
+
+Smooth density estimation from raw data using a Poisson P-spline on histogram counts:
+
+```python
+from psplines import density_estimate
+
+# Generate sample from a mixture distribution
+data = np.concatenate([
+    np.random.normal(-2, 0.5, 300),
+    np.random.normal(2, 0.8, 200),
+])
+
+result = density_estimate(data, bins=100, penalty_order=3)
+
+plt.plot(result.grid, result.density, "r-", linewidth=2)
+plt.xlabel("x")
+plt.ylabel("Density")
+plt.title(f"Density Estimate (λ = {result.lambda_:.2f})")
+plt.show()
+
+# The density integrates to ~1
+print(f"Integral: {np.trapz(result.density, result.grid):.4f}")
+```
+
+### Automatic Lambda Selection for GLM
+
+All optimizers (CV, AIC, L-curve, V-curve) work with GLM families:
+
+```python
+from psplines.optimize import aic, cross_validation
+
+spline = PSpline(x, counts, nseg=20, family="poisson")
+best_lambda, score = aic(spline)
+spline.lambda_ = best_lambda
+spline.fit()
+```
+
 ## Summary
 
 This tutorial covered advanced PSplines features:
 
 ### Key Advanced Features
 
-1. **Constraints**: Boundary and monotonicity constraints (conceptual framework)
-2. **Penalty Orders**: Different smoothness assumptions (1st, 2nd, 3rd order)
-3. **Custom Basis**: Non-uniform knots, different degrees
-4. **Large Datasets**: Memory-efficient techniques, subsampling
-5. **Specialized Applications**: Periodic data, multi-scale analysis
+1. **Observation Weights**: Heteroscedastic data, missing data via zero weights
+2. **GLM Families**: Poisson (counts), Binomial (binary/proportions) via IRLS
+3. **Density Estimation**: Smooth densities from raw data via Poisson P-splines
+4. **Shape Constraints (§8.7)**: Monotonicity, convexity, concavity, non-negativity via asymmetric penalty — with selective domain support and GLM compatibility
+5. **Variable Penalties (§8.8)**: Exponential weights ($\gamma$) with automatic $(\lambda, \gamma)$ selection via `variable_penalty_cv`
+6. **Adaptive Penalties (§8.8)**: Nonparametric spatially varying smoothness via secondary B-spline basis
+7. **Penalty Orders**: Different smoothness assumptions (1st, 2nd, 3rd order)
+8. **Custom Basis**: Non-uniform knots, different degrees
+9. **Large Datasets**: Memory-efficient techniques, subsampling
+10. **Specialized Applications**: Periodic data, multi-scale analysis
 
 ### Practical Guidelines
 
 - **Penalty Order**: Use 2nd order (default) for most applications
+- **Shape Constraints**: Use when domain knowledge dictates shape (e.g. dose–response curves must be monotone)
+- **Variable Penalty**: Use when one boundary needs more/less regularisation
+- **Adaptive Penalty**: Use when the function has regions of varying complexity
 - **Large Data**: Reduce segments or subsample if memory/speed is critical
-- **Periodic Data**: Extend data or use specialized periodic basis
-- **Multi-Scale**: Consider multiple smoothing levels or wavelets
-- **Custom Basis**: Higher degree for smooth functions, lower for piecewise behavior
 
 ### Advanced Techniques Summary
 
 | Technique | When to Use | Computational Cost | Complexity |
 |-----------|-------------|-------------------|------------|
+| Observation weights | Heteroscedastic or missing data | Similar | Low |
+| Shape constraints | Known monotonicity/convexity | Moderate (iterative) | Low |
+| Variable penalty | Boundary-asymmetric smoothness | Similar | Low |
+| Adaptive penalty | Spatially varying complexity | Higher (alternating) | Medium |
 | Higher penalty order | Very smooth data | Similar | Low |
 | Custom knots | Irregular complexity | Similar | Medium |
 | Subsampling | Very large datasets | Much lower | Low |
-| Constraints | Known behavior | Higher | High |
 | Extended basis | Periodic data | Similar | Medium |
 
 ## Next Steps

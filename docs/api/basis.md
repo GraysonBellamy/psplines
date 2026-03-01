@@ -40,7 +40,7 @@ from psplines.basis import b_spline_derivative_basis
 # Generate first derivative basis
 B_deriv, knots = b_spline_derivative_basis(
     x, xl=0, xr=1, nseg=10, degree=3, 
-    derivative_order=1, knots=knots
+    deriv_order=1, knots=knots
 )
 
 print(f"Derivative basis shape: {B_deriv.shape}")

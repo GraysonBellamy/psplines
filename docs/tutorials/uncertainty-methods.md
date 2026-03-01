@@ -349,14 +349,15 @@ if bayesian_available:
     print("Performing Bayesian inference...")
     
     # Set up Bayesian model (this might take a moment)
+    # adaptive=False (default) uses a single penalty λ (§3.5)
+    # adaptive=True uses per-difference λ_j for spatially varying smoothness (§8.8)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         trace = spline.bayes_fit(
             draws=1000,
-            tune=1000, 
+            tune=1000,
             chains=2,
             target_accept=0.95,
-            return_inferencedata=True
         )
     
     # Get Bayesian predictions

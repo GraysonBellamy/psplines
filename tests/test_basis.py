@@ -1,6 +1,7 @@
 """
 Tests for psplines.basis module.
 """
+
 import numpy as np
 import pytest
 import scipy.sparse as sp
@@ -65,8 +66,7 @@ class TestBSplineDerivativeBasis:
         """Test first derivative basis construction."""
         x = np.linspace(0, 1, 20)
         # Let the function generate proper knots
-        B_deriv, _ = b_spline_derivative_basis(x, 0, 1, nseg=5, degree=3,
-                                             deriv_order=1)
+        B_deriv, _ = b_spline_derivative_basis(x, 0, 1, nseg=5, degree=3, deriv_order=1)
 
         assert sp.issparse(B_deriv)
         assert B_deriv.shape[0] == len(x)
@@ -75,8 +75,7 @@ class TestBSplineDerivativeBasis:
         """Test second derivative basis construction."""
         x = np.linspace(0, 1, 20)
         # Let the function generate proper knots
-        B_deriv, _ = b_spline_derivative_basis(x, 0, 1, nseg=5, degree=3,
-                                             deriv_order=2)
+        B_deriv, _ = b_spline_derivative_basis(x, 0, 1, nseg=5, degree=3, deriv_order=2)
 
         assert sp.issparse(B_deriv)
         assert B_deriv.shape[0] == len(x)
@@ -87,8 +86,7 @@ class TestBSplineDerivativeBasis:
         # For now, just test that the function runs without error
         x = np.linspace(0.1, 0.9, 10)
         # Let the function generate proper knots
-        B_deriv, _ = b_spline_derivative_basis(x, 0, 1, nseg=5, degree=3,
-                                             deriv_order=1)
+        B_deriv, _ = b_spline_derivative_basis(x, 0, 1, nseg=5, degree=3, deriv_order=1)
 
         # Should not contain NaN or inf values
         assert not np.any(np.isnan(B_deriv.data))

@@ -9,6 +9,21 @@ The penalty module provides functions for constructing difference penalty matric
       show_source: true
       heading_level: 3
 
+::: psplines.penalty.asymmetric_penalty_matrix
+    options:
+      show_source: true
+      heading_level: 3
+
+::: psplines.penalty.variable_penalty_matrix
+    options:
+      show_source: true
+      heading_level: 3
+
+::: psplines.penalty.adaptive_penalty_matrix
+    options:
+      show_source: true
+      heading_level: 3
+
 ## Usage Examples
 
 ### First-Order Differences
@@ -46,6 +61,51 @@ print(D3.toarray())
 # [[-1  3 -3  1  0  0]
 #  [ 0 -1  3 -3  1  0]
 #  [ 0  0 -1  3 -3  1]]
+```
+
+### Asymmetric Penalty for Shape Constraints
+
+```python
+import numpy as np
+from psplines.penalty import asymmetric_penalty_matrix
+
+# Coefficients that violate monotonicity (decreasing segment)
+alpha = np.array([1.0, 2.0, 3.0, 2.5, 4.0, 5.0])
+
+# Build penalty that targets decreasing violations
+P = asymmetric_penalty_matrix(alpha, "increasing")
+print(P.toarray())  # non-zero only at violation (index 3)
+
+# With a selective domain mask (only enforce on first 3 diffs)
+mask = np.array([True, True, True, False, False])
+P_masked = asymmetric_penalty_matrix(alpha, "increasing", mask=mask)
+```
+
+### Variable (Exponential) Penalty Weights
+
+```python
+from psplines.penalty import variable_penalty_matrix
+
+# Standard penalty (γ = 0)
+P0 = variable_penalty_matrix(n=20, order=2, gamma=0.0)
+
+# Heavier penalty toward the right boundary
+P_right = variable_penalty_matrix(n=20, order=2, gamma=5.0)
+
+# Heavier penalty toward the left boundary
+P_left = variable_penalty_matrix(n=20, order=2, gamma=-5.0)
+```
+
+### Adaptive Per-Difference Weights
+
+```python
+from psplines.penalty import adaptive_penalty_matrix
+
+# Per-difference weights (e.g. from a secondary smoothing pass)
+weights = np.ones(18)        # n=20, order=2 → 18 differences
+weights[5:10] = 0.1          # less penalty in the middle
+
+P = adaptive_penalty_matrix(n=20, order=2, weights=weights)
 ```
 
 ## Mathematical Background
@@ -123,6 +183,52 @@ $$\min_\alpha \|y - B\alpha\|^2 + \lambda \|D_p \alpha\|^2$$
 
 The penalty matrix appears as $P = \lambda D_p^T D_p$, leading to the linear system:
 $$(B^T B + \lambda D_p^T D_p) \alpha = B^T y$$
+
+### Shape Constraints via Asymmetric Penalties (§8.7)
+
+Shape constraints (monotonicity, convexity, etc.) are enforced via the asymmetric
+penalty of Eilers & Marx (2021, eq. 8.14–8.15).  Define a diagonal matrix
+$V = \text{diag}(v)$ where $v_j = 1$ when the $j$-th difference **violates** the
+constraint and $v_j = 0$ otherwise.  The shape penalty is:
+
+$$P_{\text{shape}} = \kappa \, D_d^T V \, D_d$$
+
+where $d$ is the implied difference order (1 for monotonicity, 2 for convexity,
+0 for non-negativity) and $\kappa$ is a large constant (default $10^8$).
+This penalty is re-evaluated at each iteration, updating $V$ based on the
+current solution, until the coefficients converge.
+
+Supported constraint types:
+
+| Type | Difference order | Penalises |
+|------|-----------------|-----------|
+| `increasing` | 1 | $\Delta\alpha_j < 0$ |
+| `decreasing` | 1 | $\Delta\alpha_j > 0$ |
+| `convex` | 2 | $\Delta^2\alpha_j < 0$ |
+| `concave` | 2 | $\Delta^2\alpha_j > 0$ |
+| `nonneg` | 0 | $\alpha_j < 0$ |
+
+A **selective domain mask** restricts the penalty to a sub-range of the
+coefficient indices so that the constraint applies only in a chosen region
+of the $x$-domain.
+
+### Variable and Adaptive Penalty Weights (§8.8)
+
+#### Exponential variable weights
+
+Replace the standard penalty $D^T D$ with $D^T V D$ where
+$V = \text{diag}\!\bigl(\exp(\gamma j/m)\bigr)$, $j = 0, \ldots, m-1$.
+This yields heavier/lighter regularisation near one boundary:
+
+$$P(\gamma) = D_p^T \, \text{diag}\!\bigl(e^{\gamma j/m}\bigr) \, D_p$$
+
+#### Adaptive per-difference weights
+
+A secondary B-spline basis of $K_w$ segments is fitted to the log-residuals to
+obtain per-difference weights $w_j$.  The penalty becomes $D^T \text{diag}(w) D$,
+allowing spatially varying smoothness:
+
+$$P_{\text{adapt}} = D_p^T \, \text{diag}(w_1, \ldots, w_{m}) \, D_p$$
 
 ### Penalty Order Selection
 

@@ -199,13 +199,18 @@ where $\rho(\lambda) = \log(\|y - B\hat{\alpha}\|^2)$ and $\eta(\lambda) = \log(
 
 ## Bayesian P-Splines
 
-### Model Specification
+The `bayes_fit()` method offers two modes controlled by the `adaptive` parameter.
 
-In the Bayesian framework:
-$$y \mid \alpha, \sigma^2 \sim N(B\alpha, \sigma^2 I)$$
-$$\alpha \mid \tau \sim N(0, (\lambda D_p^T D_p)^{-1})$$
+### Standard Model (adaptive=False, default)
+
+This implements the Bayesian P-spline of §3.5 (Eilers & Marx 2021; Lang & Brezger 2003) with a **single** penalty parameter:
+
+$$y \mid \alpha, \sigma \sim N(B\alpha, \sigma^2 I)$$
+$$\alpha \mid \lambda \sim N\!\bigl(0,\; (\lambda D_p^T D_p + \epsilon I)^{-1}\bigr)$$
 $$\lambda \sim \text{Gamma}(a, b)$$
-$$\sigma^2 \sim \text{InverseGamma}(c, d)$$
+$$\sigma \sim \text{InverseGamma}(c, d)$$
+
+where $\epsilon = 10^{-6}$ is a small jitter for numerical stability (since $D_p^T D_p$ is rank-deficient with a null space of dimension $p$).
 
 ### Posterior Distribution
 
@@ -213,17 +218,25 @@ The posterior for $\alpha$ is:
 $$\alpha \mid y, \lambda, \sigma^2 \sim N(\mu_\alpha, \Sigma_\alpha)$$
 
 where:
-$$\Sigma_\alpha = \sigma^2 (B^T B + \lambda D_p^T D_p)^{-1}$$
+$$\Sigma_\alpha = (B^T B / \sigma^2 + \lambda D_p^T D_p + \epsilon I)^{-1}$$
 $$\mu_\alpha = \Sigma_\alpha B^T y / \sigma^2$$
+
+### Adaptive Model (adaptive=True)
+
+This uses **per-difference** penalty parameters for spatially varying smoothness (related to §8.8):
+
+$$\lambda_j \sim \text{Gamma}(a, b), \quad j = 1, \ldots, m-p$$
+$$\alpha \mid \lambda \sim N\!\bigl(0,\; (D_p^T \Lambda D_p + \epsilon I)^{-1}\bigr)$$
+
+where $\Lambda = \text{diag}(\lambda_1, \ldots, \lambda_{m-p})$. Each $\lambda_j$ controls the penalty on the $j$-th difference, allowing different regions of the curve to have different amounts of smoothness.
 
 ### Markov Chain Monte Carlo
 
-MCMC sampling alternates between:
-1. **Update $\alpha$**: Multivariate normal conditional
-2. **Update $\lambda$**: Gamma conditional (conjugate prior)
-3. **Update $\sigma^2$**: Inverse-Gamma conditional (conjugate prior)
+Both modes use PyMC's NUTS sampler (Hamiltonian Monte Carlo) to draw from the joint posterior. The posterior mean of $\alpha$ gives the point estimate, and posterior quantiles provide credible intervals.
 
-This provides full posterior distributions for uncertainty quantification.
+### Prior Sensitivity
+
+The book (§3.5) notes that Lang & Brezger's inverse-Gamma priors for variances can favor over-smoothing depending on hyperparameter choices (Jullion & Lambert, 2007). The default priors $\text{Gamma}(2, 0.1)$ for $\lambda$ and $\text{InverseGamma}(2, 1)$ for $\sigma$ are moderately informative. Users should consider adjusting these for their specific application.
 
 ## Extensions and Variants
 
@@ -241,12 +254,87 @@ $$\min_\alpha -\ell(\mu) + \lambda \|D_p \alpha\|^2$$
 
 where $\mu = g^{-1}(B\alpha)$ and $g$ is the link function.
 
-### Varying Penalties
+### Shape Constraints via Asymmetric Penalties (§8.7)
 
-Allow spatially varying penalties:
-$$\lambda \|W D_p \alpha\|^2$$
+Shape constraints (monotonicity, convexity, concavity, non-negativity) are enforced
+through the iterative asymmetric penalty framework of Eilers & Marx (2021,
+equations 8.14–8.15).
 
-where $W$ is a diagonal weight matrix.
+#### Formulation
+
+Define a diagonal indicator matrix $V = \text{diag}(v_1, \ldots, v_{m-d})$ where
+
+$$v_j = \begin{cases}
+1 & \text{if the } j\text{-th difference violates the constraint}, \\
+0 & \text{otherwise.}
+\end{cases}$$
+
+The shape-specific penalty is:
+
+$$P_{\text{shape}} = \kappa \, D_d^T V \, D_d$$
+
+where $d$ is the difference order implied by the constraint type and $\kappa$ is a
+large constant (default $10^8$).  This is added to the standard penalty:
+
+$$(B^T W B + \lambda D_p^T D_p + \kappa \, D_d^T V \, D_d) \, \alpha = B^T W y$$
+
+#### Iterative Algorithm
+
+1. Solve the unconstrained system to obtain $\hat\alpha^{(0)}$.
+2. Compute $V^{(k)}$ from $\hat\alpha^{(k)}$ (mark violations).
+3. Solve $(B^TWB + \lambda D_p^TD_p + \kappa D_d^TV^{(k)}D_d)\alpha = B^TWy$ to get $\hat\alpha^{(k+1)}$.
+4. Repeat steps 2–3 until $\|\hat\alpha^{(k+1)} - \hat\alpha^{(k)}\| < \varepsilon$ or a maximum number of iterations.
+
+#### Constraint Types
+
+| Type | Diff order $d$ | Violation condition |
+|------|:-:|---|
+| Increasing | 1 | $\Delta\alpha_j < 0$ |
+| Decreasing | 1 | $\Delta\alpha_j > 0$ |
+| Convex | 2 | $\Delta^2\alpha_j < 0$ |
+| Concave | 2 | $\Delta^2\alpha_j > 0$ |
+| Non-negative | 0 | $\alpha_j < 0$ |
+
+Multiple constraints can be stacked by summing their respective $\kappa D_d^TVD_d$
+contributions.  A **selective domain mask** restricts the diagonal entries of $V$ so
+that the constraint is enforced only in a chosen sub-range of the coefficient index
+(corresponding to a sub-range of $x$).
+
+### Variable and Adaptive Penalties (§8.8)
+
+#### Exponential Variable Weights
+
+Replace the standard $D^TD$ with a weighted version:
+
+$$P(\gamma) = D_p^T \, \text{diag}\!\bigl(e^{\gamma \cdot 0/m},\; e^{\gamma \cdot 1/m},\; \ldots,\; e^{\gamma(m-1)/m}\bigr) \, D_p$$
+
+where $m = n_{\text{coef}} - p$.  The parameter $\gamma$ controls the spatial
+distribution of penalty weight:
+
+- $\gamma > 0$: heavier regularisation toward the right boundary
+- $\gamma < 0$: heavier regularisation toward the left boundary
+- $\gamma = 0$: recovers the standard penalty $D^TD$
+
+The optimal $(\lambda, \gamma)$ pair can be selected by a 2-D grid search over
+GCV or AIC — implemented as `variable_penalty_cv()`.
+
+#### Nonparametric Adaptive Penalty
+
+A secondary B-spline basis $B_w$ of $K_w$ segments is used to model the
+log squared differences of the current coefficients:
+
+$$\log\bigl((\Delta^p \hat\alpha_j)^2 + \epsilon\bigr) \approx B_w \beta$$
+
+Fitting $\beta$ with a separate smoothing parameter $\lambda_w$ gives smooth
+per-difference weights:
+
+$$w_j = \exp(B_w \hat\beta)_j$$
+
+The primary penalty becomes $D_p^T \text{diag}(w) D_p$ and the procedure
+alternates between estimating $\alpha$ (given $w$) and estimating $w$ (given
+$\alpha$) until convergence.  This allows the fitted curve to be flexible in
+regions of rapid change and smooth elsewhere — fully data-driven without
+specifying the form of the weight function.
 
 ## References
 

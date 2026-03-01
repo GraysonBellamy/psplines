@@ -14,6 +14,8 @@ import scipy.sparse as sp
 from numpy.typing import ArrayLike, NDArray
 from scipy.interpolate import BSpline
 
+from .exceptions import ValidationError
+
 __all__ = ["b_spline_basis", "b_spline_derivative_basis"]
 
 
@@ -100,7 +102,7 @@ def b_spline_derivative_basis(
     knots : ndarray
     """
     if deriv_order < 0:
-        raise ValueError("deriv_order must be non-negative")
+        raise ValidationError("deriv_order must be non-negative")
     if knots is None:
         knots = _make_knots(xl, xr, nseg, degree)
     # nothing to do for zero-order

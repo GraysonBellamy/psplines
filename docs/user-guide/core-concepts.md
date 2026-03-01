@@ -23,13 +23,14 @@ P-splines solve this by:
 
 Given data points $(x_i, y_i)$, P-splines fit a smooth function $f(x)$ by solving:
 
-$$\min_\alpha \|y - B\alpha\|^2 + \lambda \|D_p \alpha\|^2$$
+$$\min_\alpha (y - B\alpha)'W(y - B\alpha) + \lambda \|D_p \alpha\|^2$$
 
 Where:
 - $B$ is the B-spline basis matrix
-- $\alpha$ are the B-spline coefficients  
+- $\alpha$ are the B-spline coefficients
 - $D_p$ is the $p$-th order difference matrix
 - $\lambda$ is the smoothing parameter
+- $W = \text{diag}(w)$ is an optional diagonal weight matrix (identity when no weights are specified)
 
 ### Key Components
 
@@ -69,6 +70,28 @@ Controls the bias-variance trade-off:
 - **λ = 0**: Interpolation (high variance, low bias)  
 - **λ → ∞**: Maximum smoothness (low variance, high bias)
 - **Optimal λ**: Minimizes expected prediction error
+
+#### 4. Observation Weights
+
+Observation weights $w_i$ control how much each data point influences the fit. The weighted objective function is:
+
+$$Q = (y - B\alpha)'W(y - B\alpha) + \lambda \|D\alpha\|^2$$
+
+leading to the weighted normal equations $(B'WB + \lambda D'D)\alpha = B'Wy$.
+
+**Key uses:**
+
+- **Heteroscedastic data**: Give higher weight to more precise observations
+- **Missing data**: Set $w_i = 0$ to exclude observations — the penalty automatically interpolates through gaps with a polynomial of degree $2d - 1$ in the coefficient indices
+- **Importance weighting**: Emphasize certain regions of the data
+
+```python
+# Missing data: mark a gap with zero weights
+weights = np.ones_like(x)
+weights[20:30] = 0.0  # these observations are ignored
+spline = PSpline(x, y, weights=weights)
+spline.fit()  # smooth interpolation through the gap
+```
 
 ## Practical Understanding
 
@@ -261,13 +284,17 @@ y_pred, se = spline.predict(x_new, return_se=True,
 Full posterior distribution (requires PyMC):
 
 ```python
-# If PyMC is installed
+# Standard Bayesian P-spline (single λ, §3.5)
 trace = spline.bayes_fit(draws=1000, tune=1000)
-y_pred, se = spline.predict(x_new, return_se=True, 
-                           se_method='bayes', bayes_samples=trace)
+
+# Adaptive Bayesian P-spline (per-difference λ_j for spatially varying smoothness)
+trace = spline.bayes_fit(draws=1000, tune=1000, adaptive=True)
+
+# Posterior credible intervals (works with either mode)
+mean, lower, upper = spline.predict(x_new, return_se=True, se_method='bayes')
 ```
 
-**Advantages**: Full uncertainty quantification, principled approach
+**Advantages**: Full uncertainty quantification, principled approach. The standard mode uses a single global penalty matching the book's formulation; the adaptive mode allows different smoothness in different regions of the curve.
 
 ### Confidence vs. Prediction Intervals
 
@@ -287,7 +314,138 @@ pi_lower = y_pred - 1.96 * se_pred
 pi_upper = y_pred + 1.96 * se_pred
 ```
 
+## GLM P-Splines
+
+Beyond Gaussian responses, P-splines can smooth count and binary data via **Generalized Linear Model** (GLM) families. The fitting uses Iteratively Reweighted Least Squares (IRLS).
+
+### How GLM P-Splines Work
+
+Instead of minimizing squared residuals directly, GLM P-splines iterate:
+
+1. Compute a **working response** $z = \eta + W^{-1}(y - \mu)$
+2. Compute **working weights** $W$ from the current mean $\mu$
+3. Solve the weighted penalized system $(B'WB + \lambda D'D)\alpha = B'Wz$
+4. Update the linear predictor $\eta = B\alpha$ and the mean $\mu = h(\eta)$
+5. Repeat until coefficients converge
+
+The link function $h$ maps the linear predictor to the mean response:
+
+- **Poisson** (count data): log link, $\mu = \exp(\eta)$, weights $W = \text{diag}(\mu)$
+- **Binomial** (binary/proportion data): logit link, $\mu = t \cdot \text{sigmoid}(\eta)$, weights $W = \text{diag}(\mu(1-\pi))$
+
+### Poisson Example
+
+```python
+import numpy as np
+from psplines import PSpline
+
+# Smooth event counts over time
+years = np.arange(1900, 2000, dtype=float)
+counts = np.random.poisson(np.exp(0.5 * np.sin(years / 10)), len(years))
+
+spline = PSpline(years, counts, nseg=20, lambda_=100, family="poisson")
+spline.fit()
+
+# Predictions are always positive (response scale)
+mu_hat = spline.predict(years)
+```
+
+### Binomial Example
+
+```python
+# Probability of success as a function of dose
+dose = np.linspace(0, 10, 50)
+trials = np.full(50, 20)
+successes = np.random.binomial(trials, 1 / (1 + np.exp(-(dose - 5))))
+
+spline = PSpline(dose, successes, family="binomial", trials=trials, nseg=15)
+spline.fit()
+
+# Fitted probabilities are bounded in [0, 1]
+pi_hat = spline.predict(dose)
+```
+
+### Uncertainty for GLM Models
+
+Standard errors for GLM P-splines are computed on the **link scale** and transformed to the response scale via the inverse link. This produces asymmetric confidence intervals that respect natural bounds (positive for Poisson, [0, 1] for Binomial):
+
+```python
+mu_hat, lower, upper = spline.predict(x_new, return_se=True)
+# lower and upper are on the response scale
+```
+
+### Density Estimation
+
+A special application of Poisson P-splines: bin raw data into a histogram, fit a Poisson P-spline to the counts, and normalize to a proper density:
+
+```python
+from psplines import density_estimate
+
+result = density_estimate(raw_data, bins=100, penalty_order=3)
+# result.density integrates to ~1
+# penalty_order=3 preserves mean and variance
+```
+
 ## Advanced Concepts
+
+### Shape Constraints (§8.7)
+
+When domain knowledge requires the fitted curve to be monotone, convex, concave,
+or non-negative, you can add **shape constraints** via an asymmetric penalty.
+
+The idea is simple: for each iteration, identify which differences of the
+coefficients **violate** the desired shape, and apply a huge penalty ($\kappa$)
+only on those violations.  Iterate until all violations vanish:
+
+```python
+from psplines import PSpline
+
+# Monotone increasing fit
+spline = PSpline(x, y, nseg=20, lambda_=1.0,
+                 shape=[{"type": "increasing"}])
+spline.fit()
+
+# Convex fit
+spline = PSpline(x, y, nseg=20, lambda_=1.0,
+                 shape=[{"type": "convex"}])
+spline.fit()
+
+# Multiple constraints and selective domain
+spline = PSpline(x, y, nseg=20, lambda_=1.0,
+                 shape=[{"type": "increasing"},
+                        {"type": "concave", "domain": (0.0, 5.0)}])
+spline.fit()
+```
+
+Available shape types: `"increasing"`, `"decreasing"`, `"convex"`, `"concave"`,
+`"nonneg"`.  Shape constraints work with Gaussian, Poisson, and Binomial families.
+
+### Adaptive and Variable Penalties (§8.8)
+
+The standard P-spline applies a **uniform** penalty everywhere.  Two extensions
+allow **spatially varying** smoothness:
+
+**Variable penalty** — exponential weights $v_j = \exp(\gamma j/m)$ shift penalty
+strength smoothly from one boundary to the other:
+
+```python
+# Heavier smoothing toward the right (γ > 0)
+spline = PSpline(x, y, nseg=20, lambda_=1.0, penalty_gamma=5.0)
+spline.fit()
+```
+
+**Adaptive penalty** — per-difference weights are estimated from the data via a
+secondary B-spline basis.  Regions where the function changes rapidly get lighter
+penalty; smoother regions get heavier penalty:
+
+```python
+spline = PSpline(x, y, nseg=20, lambda_=1.0,
+                 adaptive=True, adaptive_nseg=10)
+spline.fit()
+```
+
+Use `variable_penalty_cv()` from the optimize module for automatic
+$(\lambda, \gamma)$ selection.
 
 ### Sparse Matrix Structure
 
