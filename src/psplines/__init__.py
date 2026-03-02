@@ -24,9 +24,11 @@ from .penalty import (
     adaptive_penalty_matrix,
     asymmetric_penalty_matrix,
     difference_matrix,
+    divided_difference_matrix,
     variable_penalty_matrix,
 )
 from .utils import plot_derivatives, plot_fit
+from .whittaker import WhittakerSmoother
 
 __all__ = [
     # Core
@@ -38,6 +40,7 @@ __all__ = [
     "b_spline_basis",
     # Penalty
     "difference_matrix",
+    "divided_difference_matrix",
     "asymmetric_penalty_matrix",
     "variable_penalty_matrix",
     "adaptive_penalty_matrix",
@@ -60,6 +63,8 @@ __all__ = [
     # Density estimation
     "density_estimate",
     "DensityResult",
+    # Whittaker
+    "WhittakerSmoother",
     # Exceptions
     "PSplineError",
     "FittingError",

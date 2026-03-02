@@ -24,6 +24,11 @@ The penalty module provides functions for constructing difference penalty matric
       show_source: true
       heading_level: 3
 
+::: psplines.penalty.divided_difference_matrix
+    options:
+      show_source: true
+      heading_level: 3
+
 ## Usage Examples
 
 ### First-Order Differences
@@ -106,6 +111,54 @@ weights = np.ones(18)        # n=20, order=2 → 18 differences
 weights[5:10] = 0.1          # less penalty in the middle
 
 P = adaptive_penalty_matrix(n=20, order=2, weights=weights)
+```
+
+### Divided Differences for Non-Uniform Spacing
+
+When data are non-uniformly spaced, the standard difference matrix treats all gaps
+as equal.  The divided-difference matrix weights each difference by the reciprocal
+of the gap in $x$, giving a roughness penalty in the natural units of the
+independent variable:
+
+```python
+import numpy as np
+from psplines.penalty import divided_difference_matrix
+
+# Non-uniform sample positions
+x = np.array([0.0, 1.0, 4.0, 5.0, 10.0])
+
+# First-order divided differences
+D1 = divided_difference_matrix(x, order=1)
+print(D1.toarray())
+# [[-1.    1.    0.    0.    0.  ]
+#  [ 0.   -0.33  0.33  0.    0.  ]
+#  [ 0.    0.   -1.    1.    0.  ]
+#  [ 0.    0.    0.   -0.2   0.2 ]]
+
+# Second-order divided differences
+D2 = divided_difference_matrix(x, order=2)
+print(D2.shape)  # (3, 5)
+
+# Key property: second divided differences annihilate linear functions
+z_linear = 2.0 * x + 3.0
+print(D2 @ z_linear)  # ≈ [0, 0, 0]
+
+# For quadratics, the result is constant
+z_quad = x ** 2
+print(D2 @ z_quad)    # ≈ [2, 2, 2]
+```
+
+On uniformly spaced $x$, `divided_difference_matrix` is proportional to the standard `difference_matrix`:
+
+```python
+x_uniform = np.linspace(0, 1, 20)
+h = x_uniform[1] - x_uniform[0]
+
+D_std = difference_matrix(20, order=2)
+D_div = divided_difference_matrix(x_uniform, order=2)
+
+# D_div ≈ D_std / h²
+np.allclose(D_div.toarray(), D_std.toarray() / h**2)  # True
 ```
 
 ## Mathematical Background
@@ -236,3 +289,20 @@ $$P_{\text{adapt}} = D_p^T \, \text{diag}(w_1, \ldots, w_{m}) \, D_p$$
 - **Order 2**: Most common choice, penalizes curvature
 - **Order 3**: For very smooth curves, penalizes jerk
 - **Higher orders**: Rarely needed, may cause numerical issues
+
+### Divided Differences for Non-Uniform Data
+
+The standard difference matrix $D_p$ assumes equal spacing between coefficients.
+When applied to the Whittaker smoother (where $B = I$ and coefficients **are** the
+data values), non-uniform spacing in $x$ requires correcting the differences.
+
+The divided-difference operator $D_x$ replaces each finite difference with
+
+$$(D_x z)_i = \frac{z_{i+1} - z_i}{x_{i+1} - x_i}$$
+
+and second-order divided differences are built recursively via midpoints.  The
+penalty $\lambda \|D_x z\|^2$ then measures roughness in the units of $x$ rather
+than index position.  This is used automatically by
+[`WhittakerSmoother`](whittaker.md) when non-uniform spacing is detected.
+
+See also: [`divided_difference_matrix`](#psplines.penalty.divided_difference_matrix).

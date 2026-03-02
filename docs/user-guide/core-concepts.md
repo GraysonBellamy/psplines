@@ -447,6 +447,42 @@ spline.fit()
 Use `variable_penalty_cv()` from the optimize module for automatic
 $(\lambda, \gamma)$ selection.
 
+### Whittaker Smoother
+
+The **Whittaker smoother** is the special case of P-splines where $B = I$ (the
+identity matrix).  Instead of fitting B-spline coefficients, it operates
+directly on the data vector by solving:
+
+$$(W + \lambda D^\top D) z = W y$$
+
+This is ideal for fast smoothing of gridded data (signals, spectra, time series)
+where you don't need derivatives, GLM families, or prediction at arbitrary new
+points.
+
+**Non-uniform spacing** is handled via *divided differences*: when $x$-spacing
+varies, the standard difference operator is replaced by $D_x$ which weights each
+difference by $1/(x_{i+1} - x_i)$.  This ensures the roughness penalty is in
+the natural units of $x$.
+
+```python
+from psplines import WhittakerSmoother
+
+# Basic usage
+ws = WhittakerSmoother(x, y, lambda_=1e4, penalty_order=2)
+ws.fit()
+smoothed = ws.fitted_values
+
+# Automatic λ selection via GCV
+ws = WhittakerSmoother(x, y)
+lam, score = ws.cross_validation()
+
+# Non-uniform data — divided differences are used automatically
+x_irregular = np.sort(np.random.uniform(0, 10, 100))
+ws = WhittakerSmoother(x_irregular, y, lambda_=100).fit()
+```
+
+See the [Whittaker Smoother API](../api/whittaker.md) for full details.
+
 ### Sparse Matrix Structure
 
 P-splines exploit sparsity for efficiency:

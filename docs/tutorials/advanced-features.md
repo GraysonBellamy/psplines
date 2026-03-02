@@ -1078,6 +1078,87 @@ spline.lambda_ = best_lambda
 spline.fit()
 ```
 
+## Whittaker Smoother
+
+The **Whittaker smoother** is the limiting case of P-splines where the B-spline
+basis is replaced by the identity matrix.  It operates directly on the data
+vector: no basis construction, no prediction at new points, just fast penalised
+smoothing.
+
+### When to Use
+
+| Prefer `WhittakerSmoother` | Prefer `PSpline` |
+|---|---|
+| Data already on a grid (signals, spectra, images) | Need prediction at new x-values |
+| Only need the smoothed vector, not derivatives | Need derivatives or integrals |
+| Maximum speed / minimal memory | Need GLM families (Poisson, Binomial) |
+| Non-uniform time stamps, no interpolation needed | Shape constraints (monotone, convex) |
+
+### Basic Whittaker Smoothing
+
+```python
+import numpy as np
+from psplines import WhittakerSmoother
+
+# Noisy signal
+np.random.seed(42)
+x = np.linspace(0, 2 * np.pi, 200)
+y = np.sin(x) + np.random.normal(0, 0.3, len(x))
+
+# Smooth with a fixed lambda
+ws = WhittakerSmoother(x, y, lambda_=1e4, penalty_order=2)
+ws.fit()
+print(f"Effective dimension: {ws.ed:.1f}")
+```
+
+### Automatic $\lambda$ via GCV
+
+```python
+ws = WhittakerSmoother(x, y)
+best_lambda, gcv_score = ws.cross_validation()
+print(f"Optimal lambda: {best_lambda:.1f}, GCV: {gcv_score:.6f}")
+```
+
+### Non-Uniform Spacing
+
+When the $x$-values are not equally spaced, `WhittakerSmoother` automatically
+switches to **divided differences** so the penalty is expressed in the natural
+units of $x$:
+
+```python
+# Irregular time stamps
+x_irregular = np.sort(np.random.uniform(0, 10, 150))
+y_irregular = np.sin(x_irregular) + np.random.normal(0, 0.2, 150)
+
+ws = WhittakerSmoother(x_irregular, y_irregular, lambda_=100)
+ws.fit()
+# Gaps in x receive appropriately less penalty
+```
+
+### Missing Data via Weights
+
+Set zero weights to exclude observations — the smoother interpolates through
+missing regions:
+
+```python
+w = np.ones_like(y)
+w[80:120] = 0  # mark a block as missing
+
+ws = WhittakerSmoother(x, y, lambda_=1e3, weights=w)
+ws.fit()
+# fitted_values in the gap are smoothly interpolated
+```
+
+### V-Curve for Interactive Exploration
+
+The V-curve plots $\log \|Dz\|$ against $\log \|y - z\|$ as $\lambda$ varies.
+The corner of this curve corresponds to a good balance:
+
+```python
+opt_lambda, lambdas, fit_norms, rough_norms = ws.v_curve()
+print(f"V-curve optimal lambda: {opt_lambda:.1f}")
+```
+
 ## Summary
 
 This tutorial covered advanced PSplines features:
@@ -1094,6 +1175,7 @@ This tutorial covered advanced PSplines features:
 8. **Custom Basis**: Non-uniform knots, different degrees
 9. **Large Datasets**: Memory-efficient techniques, subsampling
 10. **Specialized Applications**: Periodic data, multi-scale analysis
+11. **Whittaker Smoother**: Identity-basis smoothing with automatic non-uniform spacing support via divided differences
 
 ### Practical Guidelines
 
@@ -1101,6 +1183,7 @@ This tutorial covered advanced PSplines features:
 - **Shape Constraints**: Use when domain knowledge dictates shape (e.g. dose–response curves must be monotone)
 - **Variable Penalty**: Use when one boundary needs more/less regularisation
 - **Adaptive Penalty**: Use when the function has regions of varying complexity
+- **Whittaker Smoother**: Use for fast grid-based smoothing without needing a B-spline basis
 - **Large Data**: Reduce segments or subsample if memory/speed is critical
 
 ### Advanced Techniques Summary
@@ -1115,6 +1198,7 @@ This tutorial covered advanced PSplines features:
 | Custom knots | Irregular complexity | Similar | Medium |
 | Subsampling | Very large datasets | Much lower | Low |
 | Extended basis | Periodic data | Similar | Medium |
+| Whittaker smoother | Grid data, signals, spectra | Lower (no basis) | Low |
 
 ## Next Steps
 

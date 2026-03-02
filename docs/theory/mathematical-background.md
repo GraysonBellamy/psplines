@@ -240,6 +240,55 @@ The book (§3.5) notes that Lang & Brezger's inverse-Gamma priors for variances 
 
 ## Extensions and Variants
 
+### The Whittaker Smoother
+
+The Whittaker smoother (Eilers, 2003) is the special case of P-splines where the
+basis matrix is the identity, $B = I$.  Instead of estimating B-spline coefficients,
+the smoother operates directly on the data vector:
+
+$$(W + \lambda D_p^\top D_p)\, z = W\, y$$
+
+where $W = \text{diag}(w_1, \ldots, w_n)$ is a diagonal weight matrix (identity if
+all weights are 1; zero weights mark missing observations).
+
+The effective degrees of freedom and standard errors follow the same formulas as
+for P-splines, with $B$ replaced by $I$:
+
+$$\text{df}(\lambda) = \text{tr}\!\bigl[W (W + \lambda D_p^\top D_p)^{-1}\bigr]$$
+
+#### Divided Differences for Non-Uniform Spacing
+
+When data are sampled at non-uniform positions $x_1 < x_2 < \cdots < x_n$, the
+standard difference operator treats the gaps as equal, which distorts the penalty.
+The remedy is to replace $D_p$ with the **divided-difference operator** $D_x$.
+
+**First-order divided differences:**
+
+$$(D_x^{(1)} z)_i = \frac{z_{i+1} - z_i}{x_{i+1} - x_i}$$
+
+In matrix form, $D_x^{(1)}$ is $(n-1) \times n$ with row $i$ containing
+$-1/h_i$ and $1/h_i$ where $h_i = x_{i+1} - x_i$.
+
+**Second-order divided differences:**
+
+Defined recursively by applying first-order divided differences to the result of
+the first order, using midpoints $\bar x_i = (x_i + x_{i+1})/2$:
+
+$$(D_x^{(2)} z)_i = \frac{\frac{z_{i+2} - z_{i+1}}{x_{i+2} - x_{i+1}} - \frac{z_{i+1} - z_i}{x_{i+1} - x_i}}{\bar x_{i+1} - \bar x_i}$$
+
+The resulting $(n-2) \times n$ matrix $D_x^{(2)} = D_{\bar x}^{(1)} \cdot D_x^{(1)}$
+reduces to the standard second-difference matrix (up to a constant) when spacing
+is uniform.
+
+**Key properties:**
+
+- $D_x^{(1)} z = 0$ for all constant $z$ (annihilates constants)
+- $D_x^{(2)} z = 0$ for all linear $z$ (annihilates linear functions)
+- $D_x^{(2)} z = 2$ when $z = x^2$ (constant for quadratics)
+
+When the spacing is detected to be uniform, the implementation falls back to
+the standard (cheaper) difference matrix automatically.
+
 ### Multidimensional P-Splines
 
 For functions $f(x_1, x_2)$, use tensor product bases:
@@ -340,8 +389,10 @@ specifying the form of the weight function.
 
 1. Eilers, P. H. C., & Marx, B. D. (1996). Flexible smoothing with B-splines and penalties. *Statistical Science*, 11(2), 89-121.
 
-2. Eilers, P. H. C., & Marx, B. D. (2021). *Practical Smoothing: The Joys of P-splines*. Cambridge University Press.
+2. Eilers, P. H. C. (2003). A perfect smoother. *Analytical Chemistry*, 75(14), 3631-3636.
 
-3. Ruppert, D., Wand, M. P., & Carroll, R. J. (2003). *Semiparametric Regression*. Cambridge University Press.
+3. Eilers, P. H. C., & Marx, B. D. (2021). *Practical Smoothing: The Joys of P-splines*. Cambridge University Press.
 
-4. Wood, S. N. (2017). *Generalized Additive Models: An Introduction with R*. Chapman and Hall/CRC.
+4. Ruppert, D., Wand, M. P., & Carroll, R. J. (2003). *Semiparametric Regression*. Cambridge University Press.
+
+5. Wood, S. N. (2017). *Generalized Additive Models: An Introduction with R*. Chapman and Hall/CRC.

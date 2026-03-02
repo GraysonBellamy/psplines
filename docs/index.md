@@ -9,6 +9,7 @@
 ## Key Features
 
 - **Fast Sparse Implementation**: Uses SciPy sparse matrices and optimized solvers
+- **Whittaker Smoother**: Dedicated smoother with x-aware penalties for non-uniform data (Eilers, 2003), with built-in GCV and V-curve λ selection
 - **GLM Families**: Poisson (log link) and Binomial (logit link) P-splines via IRLS, with exposure offsets and grouped trials
 - **Density Estimation**: Smooth density estimation from raw data via Poisson P-splines
 - **Shape Constraints**: Monotonicity, convexity, concavity, and non-negativity enforcement via asymmetric penalties (§8.7), with optional selective domain constraints

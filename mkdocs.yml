@@ -55,6 +55,7 @@ nav:
     - Gallery: examples/gallery.md
   - API Reference:
     - Core: api/core.md
+    - Whittaker Smoother: api/whittaker.md
     - GLM Families: api/glm.md
     - Density Estimation: api/density.md
     - Basis Functions: api/basis.md

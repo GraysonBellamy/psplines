@@ -64,15 +64,24 @@ moments preserved via penalty order (`penalty_order=3` preserves mean + variance
 
 ---
 
-## Tier 3 — The Whittaker Smoother
+## ~~Tier 3 — The Whittaker Smoother~~ — Done
 
-A degenerate P-spline where `B = I` (identity). Extremely fast for evenly-spaced data — only requires solving `(I + λD'D)μ = y`. No knots, no degree, no segments to choose.
+Implemented: `WhittakerSmoother` class in `psplines.whittaker`. Solves `(W + λD'D)z = Wy` via a
+single sparse solve. For non-uniform x-spacing, uses the divided-difference operator `D_x`
+(added to `psplines.penalty.divided_difference_matrix`) so that the roughness penalty correctly
+accounts for variable gaps. Uniform spacing detected automatically and uses the standard
+(faster) difference matrix.
 
-Applications: time series, spectra, life tables, signal processing.
+Features:
 
-Missing data via zero weights: `(W + λD'D)μ = Wy`.
+- `fit()` — sparse solve, ED, pointwise SEs
+- `predict(x_new)` — linear interpolation to new locations
+- `cross_validation()` — GCV-based λ selection
+- `v_curve()` — V-curve minimum-distance λ selection
+- Missing-data support via zero weights
+- Unsorted input handled automatically
 
-**Reference**: §2.10
+**Reference**: §2.10; Eilers (2003) "A perfect smoother"
 
 ---
 

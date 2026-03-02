@@ -24,6 +24,7 @@ from scipy.special import comb
 
 __all__ = [
     "difference_matrix",
+    "divided_difference_matrix",
     "asymmetric_penalty_matrix",
     "variable_penalty_matrix",
     "adaptive_penalty_matrix",
@@ -63,6 +64,80 @@ def difference_matrix(n: int, order: int = 2) -> csr_matrix:
     # build each diagonal of length m
     data = [((-1) ** (order - k)) * comb(order, k) * np.ones(m) for k in offsets]
     D = diags(data, offsets, shape=(m, n), format="csr")
+    return D
+
+
+def divided_difference_matrix(x: np.ndarray, order: int = 2) -> csr_matrix:
+    """
+    X-gap-aware sparse difference matrix using divided differences.
+
+    For uniformly spaced *x* this is proportional to the standard
+    :func:`difference_matrix`; for non-uniform spacing it correctly
+    accounts for variable gaps so that the roughness penalty is
+    expressed in the units of *x* rather than index position.
+
+    The matrix is built recursively.  Order 1 produces:
+
+    .. math::
+
+        (D_1 z)_i = \\frac{z_{i+1} - z_i}{x_{i+1} - x_i}
+
+    Order 2 applies a second divided difference to the order-1 result
+    using midpoints, and so on.
+
+    Parameters
+    ----------
+    x : 1-D array, length *n*
+        Sorted, strictly increasing sample positions.
+    order : int
+        Order of the divided difference (must be >= 1).
+
+    Returns
+    -------
+    D_x : csr_matrix, shape ``(n - order, n)``
+        Sparse divided-difference operator.
+
+    Raises
+    ------
+    ValueError
+        If *order* < 1, *x* is too short, or *x* is not strictly increasing.
+
+    References
+    ----------
+    Eilers (2003), "A perfect smoother", *Anal. Chem.* 75 3631–3636.
+    """
+    x = np.asarray(x, dtype=float).ravel()
+    n = x.size
+    if order < 1:
+        raise ValueError("order must be >= 1")
+    if n <= order:
+        return csr_matrix((0, n))
+    h = np.diff(x)
+    if np.any(h <= 0):
+        raise ValueError("x must be strictly increasing")
+
+    # Order-1: D1[i, i] = -1/h_i,  D1[i, i+1] = 1/h_i
+    m1 = n - 1
+    inv_h = 1.0 / h
+    D: csr_matrix = diags([-inv_h, inv_h], [0, 1], shape=(m1, n), format="csr")  # type: ignore[call-overload]
+
+    if order == 1:
+        return D
+
+    # Higher orders: recursively apply first-order divided differences
+    # using the midpoints implied by the previous level.
+    mid = 0.5 * (x[:-1] + x[1:])  # midpoints for level 1
+    for _ in range(2, order + 1):
+        m_prev = D.shape[0]
+        h_mid = np.diff(mid)
+        m_new = m_prev - 1
+        inv_h_mid = 1.0 / h_mid[:m_new]
+        D_step: csr_matrix = diags(
+            [-inv_h_mid, inv_h_mid], [0, 1], shape=(m_new, m_prev), format="csr"
+        )  # type: ignore[call-overload]
+        D = (D_step @ D).tocsr()  # type: ignore[no-any-return]
+        mid = 0.5 * (mid[:-1] + mid[1:])
+
     return D
 
 

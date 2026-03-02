@@ -170,6 +170,24 @@ spline = PSpline(x, y, nseg=20, lambda_=1.0,
 spline.fit()
 ```
 
+### Whittaker Smoother (Fast Grid Smoothing)
+```python
+from psplines import WhittakerSmoother
+
+# Fast smoothing without B-spline basis (B = I)
+ws = WhittakerSmoother(x, y, lambda_=1e4)
+ws.fit()
+smoothed = ws.fitted_values
+
+# Automatic lambda selection
+ws = WhittakerSmoother(x, y)
+best_lambda, score = ws.cross_validation()
+
+# Works with non-uniform spacing (uses divided differences automatically)
+x_irregular = np.sort(np.random.uniform(0, 10, 100))
+ws = WhittakerSmoother(x_irregular, y_irregular, lambda_=100).fit()
+```
+
 ## Parameter Selection Guide
 
 ### Quick Rules of Thumb
