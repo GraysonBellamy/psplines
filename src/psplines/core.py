@@ -1091,6 +1091,7 @@ class PSpline:
         target_accept: float = 0.9,
         random_seed: int | None = None,
         adaptive: bool = False,
+        nuts_sampler: str = "pymc",
     ) -> Any:
         """
         Fit the P-spline model using Bayesian inference via PyMC.
@@ -1144,6 +1145,12 @@ class PSpline:
             If False, use a single scalar penalty lambda (§3.5).
             If True, use per-difference lambdas for spatially adaptive
             smoothing (§8.8).
+        nuts_sampler : str, optional
+            NUTS sampler backend passed to ``pymc.sample()``.  ``"pymc"``
+            (default) uses the built-in PyTensor/C backend.  ``"nutpie"``
+            compiles the model once via numba and samples chains in parallel
+            threads, which is significantly faster for multi-chain runs.
+            Requires ``nutpie`` to be installed (``pip install psplines[nutpie]``).
 
         Returns
         -------
@@ -1196,6 +1203,7 @@ class PSpline:
                 cores=cores,
                 target_accept=target_accept,
                 random_seed=random_seed,
+                nuts_sampler=nuts_sampler,
             )
 
         # Store results
