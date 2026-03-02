@@ -34,7 +34,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import scipy.sparse as sp
 from scipy.optimize import minimize_scalar
-from scipy.sparse.linalg import spsolve
+from scipy.sparse.linalg import splu, spsolve
 
 from .exceptions import FittingError, OptimizationError, ValidationError
 from .penalty import difference_matrix, divided_difference_matrix
@@ -49,6 +49,19 @@ def _is_uniform(x: np.ndarray, rtol: float = 1e-8) -> bool:
     """Return True if *x* is uniformly spaced within *rtol*."""
     h = np.diff(x)
     return bool(np.allclose(h, h[0], rtol=rtol, atol=0.0))
+
+
+def _sparse_diag_inv(A: sp.spmatrix | sp.csc_matrix | sp.csr_matrix) -> np.ndarray:
+    """Return the diagonal of ``A⁻¹`` via sparse LU — O(n) memory."""
+    LU = splu(sp.csc_matrix(A))
+    n = A.shape[0]
+    diag = np.empty(n)
+    e = np.zeros(n)
+    for i in range(n):
+        e[i] = 1.0
+        diag[i] = LU.solve(e)[i]
+        e[i] = 0.0
+    return diag
 
 
 @dataclass(slots=True)
@@ -89,9 +102,6 @@ class WhittakerSmoother:
     _x_sorted: NDArray | None = field(default=None, repr=False)
     _sort_idx: NDArray | None = field(default=None, repr=False)
     _unsort_idx: NDArray | None = field(default=None, repr=False)
-    _DtD: sp.spmatrix | None = field(default=None, repr=False)
-    _D: sp.spmatrix | None = field(default=None, repr=False)
-    _W: sp.spmatrix | None = field(default=None, repr=False)
 
     # ------------------------------------------------------------------ init
     def __post_init__(self) -> None:
@@ -148,6 +158,23 @@ class WhittakerSmoother:
         DtD = (D.T @ D).tocsr()
         return D, DtD
 
+    def _prepare_system(
+        self,
+    ) -> tuple[
+        np.ndarray, np.ndarray, np.ndarray, sp.spmatrix, sp.spmatrix, sp.spmatrix
+    ]:
+        """Return (x_sorted, y_sorted, w, W, D, DtD) from current state."""
+        assert self._x_sorted is not None and self._sort_idx is not None
+        x = self._x_sorted
+        y_sorted = np.asarray(self.y)[self._sort_idx]
+        D, DtD = self._build_penalty(x)
+        if self.weights is not None:
+            w = np.asarray(self.weights)[self._sort_idx]
+        else:
+            w = np.ones(x.size)
+        W = sp.diags(w)
+        return x, y_sorted, w, W, D, DtD
+
     def fit(self) -> WhittakerSmoother:
         """Fit the smoother via a single sparse solve.
 
@@ -159,39 +186,25 @@ class WhittakerSmoother:
         WhittakerSmoother
             *self*, for method-chaining.
         """
-        assert self._x_sorted is not None and self._sort_idx is not None
-        x = self._x_sorted
+        x, y_sorted, w, W, _D, DtD = self._prepare_system()
         n = x.size
-        y_sorted = np.asarray(self.y)[self._sort_idx]
-
-        # Difference operator
-        self._D, self._DtD = self._build_penalty(x)
-
-        # Weight matrix
-        if self.weights is not None:
-            w = np.asarray(self.weights)[self._sort_idx]
-        else:
-            w = np.ones(n)
-        self._W = sp.diags(w)
 
         # Solve  (W + λ D'D) z = W y
-        A = (self._W + self.lambda_ * self._DtD).tocsr()  # type: ignore[operator]
-        rhs = self._W @ y_sorted
-        z = spsolve(A, rhs)
+        A = (W + self.lambda_ * DtD).tocsr()  # type: ignore[operator]
+        z = spsolve(A, W @ y_sorted)
 
-        # Effective degrees of freedom: ED = trace(W (W + λ D'D)^{-1})
-        A_dense = A.toarray()  # type: ignore[attr-defined]
-        W_dense = self._W.toarray()  # type: ignore[attr-defined]
-        invA = np.linalg.inv(A_dense)
-        self.ED = float(np.trace(W_dense @ invA))
+        # Diagonal of A⁻¹ via sparse LU — used for both ED and SEs
+        diag_invA = _sparse_diag_inv(A)
 
-        # Pointwise SEs: se_i = sqrt(phi * [A^{-1}]_ii)
-        # phi = RSS / (n - ED) (Gaussian)
+        # Effective degrees of freedom: ED = trace(W @ A⁻¹) = w · diag(A⁻¹)
+        self.ED = float(w @ diag_invA)
+
+        # Pointwise SEs: se_i = sqrt(φ · [A⁻¹]_ii),  φ = RSS / (n − ED)
         resid = y_sorted - z
         dof = max(n - self.ED, 1.0)
-        rss = float(resid @ (self._W @ resid))
+        rss = float(resid @ (W @ resid))
         phi = rss / dof
-        self.se_fitted = np.sqrt(np.maximum(phi * np.diag(invA), 0.0))
+        self.se_fitted = np.sqrt(np.maximum(phi * diag_invA, 0.0))
 
         # Unsort back to original order
         assert self._unsort_idx is not None
@@ -227,25 +240,31 @@ class WhittakerSmoother:
         return np.asarray(np.interp(xq, self._x_sorted, z_sorted))
 
     # -------------------------------------------------------- lambda selection
+    @staticmethod
     def _solve_for_lambda(
-        self,
         lam: float,
-        x: np.ndarray,
         y: np.ndarray,
+        w: np.ndarray,
         W: sp.spmatrix,
-        DtD: sp.spmatrix,
         D: sp.spmatrix,
+        DtD: sp.spmatrix,
+        *,
+        need_edf: bool = False,
+        need_penalty: bool = False,
     ) -> tuple[np.ndarray, float, float, float]:
-        """Solve for a single lambda, return (z, rss, penalty, edf)."""
+        """Solve for a single λ value.
+
+        Returns ``(z, rss, penalty, edf)``.
+        *penalty* and *edf* are ``nan`` unless the corresponding
+        ``need_*`` flag is set, avoiding expensive work for callers
+        that don't use them.
+        """
         A = (W + lam * DtD).tocsr()  # type: ignore[operator]
         z = spsolve(A, W @ y)
         resid = y - z
         rss = float(resid @ (W @ resid))
-        pen = float(np.sum((D @ z) ** 2))
-        # ED via exact trace for moderate n
-        A_dense = A.toarray()  # type: ignore[attr-defined]
-        W_dense = W.toarray()  # type: ignore[attr-defined]
-        edf = float(np.trace(W_dense @ np.linalg.inv(A_dense)))
+        pen = float(np.sum((D @ z) ** 2)) if need_penalty else np.nan
+        edf = float(w @ _sparse_diag_inv(A)) if need_edf else np.nan
         return z, rss, pen, edf
 
     def cross_validation(
@@ -267,21 +286,20 @@ class WhittakerSmoother:
         best_lambda : float
         best_score : float
         """
-        assert self._x_sorted is not None and self._sort_idx is not None
-        x = self._x_sorted
-        n = x.size
-        y_sorted = np.asarray(self.y)[self._sort_idx]
-
-        D, DtD = self._build_penalty(x)
-        if self.weights is not None:
-            w = np.asarray(self.weights)[self._sort_idx]
-        else:
-            w = np.ones(n)
-        W = sp.diags(w)
+        _x, y_sorted, w, W, D, DtD = self._prepare_system()
+        n = _x.size
 
         def obj(loglam: float) -> float:
             lam = 10.0**loglam
-            _, rss, _, edf = self._solve_for_lambda(lam, x, y_sorted, W, DtD, D)
+            _, rss, _, edf = self._solve_for_lambda(
+                lam,
+                y_sorted,
+                w,
+                W,
+                D,
+                DtD,
+                need_edf=True,
+            )
             denom = (1.0 - edf / n) ** 2
             return (rss / n) / denom if denom > 0 else np.inf
 
@@ -321,17 +339,7 @@ class WhittakerSmoother:
         best_score : float
             Minimum distance value.
         """
-        assert self._x_sorted is not None and self._sort_idx is not None
-        x = self._x_sorted
-        n = x.size
-        y_sorted = np.asarray(self.y)[self._sort_idx]
-
-        D, DtD = self._build_penalty(x)
-        if self.weights is not None:
-            w = np.asarray(self.weights)[self._sort_idx]
-        else:
-            w = np.ones(n)
-        W = sp.diags(w)
+        _x, y_sorted, w, W, D, DtD = self._prepare_system()
 
         grid = np.logspace(
             np.log10(lambda_bounds[0]), np.log10(lambda_bounds[1]), num_lambda
@@ -340,7 +348,15 @@ class WhittakerSmoother:
         log_pen = np.full(num_lambda, np.nan)
 
         for i, lam in enumerate(grid):
-            _, rss, pen, _ = self._solve_for_lambda(lam, x, y_sorted, W, DtD, D)
+            _, rss, pen, _ = self._solve_for_lambda(
+                lam,
+                y_sorted,
+                w,
+                W,
+                D,
+                DtD,
+                need_penalty=True,
+            )
             log_rss[i] = np.log(max(rss, 1e-300))
             log_pen[i] = np.log(max(pen, 1e-300))
 
