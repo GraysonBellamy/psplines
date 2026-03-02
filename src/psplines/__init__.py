@@ -1,4 +1,4 @@
-__version__ = "0.1.3"
+__version__ = "0.2.0"
 
 from .basis import b_spline_basis
 from .core import DerivConstraint, PSpline, ShapeConstraint, SlopeZeroConstraint
