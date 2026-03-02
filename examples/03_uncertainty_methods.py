@@ -60,7 +60,7 @@ def compare_uncertainty_methods(spline, x_pred, n_bootstrap=1000):
             x_pred,
             return_se=True,
             se_method="bootstrap",
-            B_boot=n_bootstrap,
+            n_boot=n_bootstrap,
             n_jobs=1,
             seed=42,
         )
@@ -297,7 +297,7 @@ def main():
 
     if results.get("analytical"):
         residuals = y_noisy - spline.fitted_values
-        standardized_residuals = residuals / np.sqrt(spline.sigma2)
+        standardized_residuals = residuals / np.sqrt(spline.phi_)
 
         # Simple QQ plot
         sorted_residuals = np.sort(standardized_residuals)
@@ -320,7 +320,7 @@ def main():
     print("\n5. Summary Statistics:")
     print("   Model fit:")
     print(f"     - Effective DoF: {spline.ED:.2f}")
-    print(f"     - Residual variance: {spline.sigma2:.6f}")
+    print(f"     - Residual variance: {spline.phi_:.6f}")
     print(f"     - RMSE: {np.sqrt(np.mean((y_noisy - spline.fitted_values) ** 2)):.4f}")
 
     print("\n   Uncertainty method comparison:")

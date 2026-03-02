@@ -16,12 +16,53 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import scipy.sparse as sp
-from scipy.sparse.linalg import factorized
+from scipy.sparse.linalg import factorized, spsolve
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
-__all__ = ["effective_df"]
+__all__ = ["effective_df", "solve_penalized"]
+
+
+def solve_penalized(
+    BtB: sp.spmatrix,
+    Bty: np.ndarray,
+    P: sp.spmatrix,
+    C: sp.spmatrix | None = None,
+) -> np.ndarray:
+    """
+    Solve the penalized system (B'WB + P) α = B'Wy with optional
+    equality constraints C α = 0.
+
+    When C is provided, solves the augmented saddle-point system:
+        [[A, C'], [C, 0]] [α; λ] = [Bty; 0]
+
+    Parameters
+    ----------
+    BtB : sparse (nb x nb)
+        Precomputed B'WB (or B'B if unweighted).
+    Bty : 1-D array, length nb
+        Precomputed B'Wy (or B'y if unweighted).
+    P : sparse (nb x nb)
+        Total penalty matrix (already λ-scaled).
+    C : sparse (nc x nb), optional
+        Constraint matrix.
+
+    Returns
+    -------
+    alpha : 1-D array, length nb
+    """
+    A = (BtB + P).tocsr()  # type: ignore[operator]
+    if C is None:
+        return spsolve(A, Bty)
+    nc = C.shape[0]
+    zero = sp.csr_matrix((nc, nc))
+    top = sp.hstack([A, C.T], format="csr")  # type: ignore[call-overload, attr-defined]
+    bot = sp.hstack([C, zero], format="csr")  # type: ignore[call-overload]
+    A_aug = sp.vstack([top, bot], format="csr")
+    rhs = np.concatenate([Bty, np.zeros(nc)])
+    sol = spsolve(A_aug, rhs)
+    return sol[: A.shape[0]]
 
 
 def effective_df(

@@ -410,7 +410,7 @@ def parallel_bootstrap_uncertainty(spline, x_eval, n_boot=1000, n_jobs=-1):
         # Generate bootstrap sample
         n = spline.n
         bootstrap_y = (spline.predict(spline.x) + 
-                      np.sqrt(spline.sigma2) * np.random.randn(n))
+                      np.sqrt(spline.phi_) * np.random.randn(n))
         
         # Fit bootstrap spline
         boot_spline = PSpline(spline.x, bootstrap_y, 

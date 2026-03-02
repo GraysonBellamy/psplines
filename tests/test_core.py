@@ -96,7 +96,7 @@ class TestPSplineFitting:
         assert self.spline.B is not None
         assert self.spline.knots is not None
         assert self.spline.ED is not None
-        assert self.spline.sigma2 is not None
+        assert self.spline.phi_ is not None
         assert self.spline.se_coef is not None
         assert self.spline.se_fitted is not None
 
@@ -138,8 +138,8 @@ class TestPSplineFitting:
         # Check that effective degrees of freedom is reasonable
         assert 3 < self.spline.ED < len(self.y)
 
-        # Check that sigma2 is positive
-        assert self.spline.sigma2 > 0
+        # Check that phi_ (dispersion) is positive
+        assert self.spline.phi_ > 0
 
     def test_different_penalty_orders(self):
         """Test fitting with different penalty orders."""
@@ -197,15 +197,12 @@ class TestPSplinePrediction:
         with pytest.raises(ValidationError, match="x_new contains non-finite values"):
             self.spline.predict([0.5, np.nan])
 
-        with pytest.raises(ValidationError, match="derivative_order must be positive"):
-            self.spline.predict(self.x_new, derivative_order=0)
-
         with pytest.raises(ValidationError, match="se_method must be"):
             self.spline.predict(self.x_new, se_method="invalid")
 
-        with pytest.raises(ValidationError, match="B_boot must be positive"):
+        with pytest.raises(ValidationError, match="n_boot must be positive"):
             self.spline.predict(
-                self.x_new, se_method="bootstrap", return_se=True, B_boot=-1
+                self.x_new, se_method="bootstrap", return_se=True, n_boot=-1
             )
 
     def test_prediction_consistency(self):
@@ -315,7 +312,7 @@ class TestPSplineEdgeCases:
         y = np.sin(2 * np.pi * x) + 2 * np.random.randn(50)  # Very noisy
 
         spline = PSpline(x, y, lambda_=100).fit()  # High smoothing
-        assert spline.sigma2 > 1  # Should detect high noise
+        assert spline.phi_ > 1  # Should detect high noise
         assert spline.coef is not None
 
 
@@ -353,7 +350,7 @@ class TestPSplineWeights:
 
         assert_allclose(ps_w1.coef, ps_no_w.coef, rtol=1e-12)
         assert_allclose(ps_w1.ED, ps_no_w.ED, rtol=1e-12)
-        assert_allclose(ps_w1.sigma2, ps_no_w.sigma2, rtol=1e-12)
+        assert_allclose(ps_w1.phi_, ps_no_w.phi_, rtol=1e-12)
         assert_allclose(ps_w1.se_fitted, ps_no_w.se_fitted, rtol=1e-12)
 
     def test_nonuniform_weights_differ(self):

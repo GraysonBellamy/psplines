@@ -104,7 +104,7 @@ y_pred = spline.predict(x_new)
 y_pred, se = spline.predict(x_new, return_se=True)
 
 # With bootstrap standard errors
-y_pred, se = spline.predict(x_new, return_se=True, se_method="bootstrap", B_boot=1000)
+y_pred, se = spline.predict(x_new, return_se=True, se_method="bootstrap", n_boot=1000)
 ```
 
 #### Derivatives
@@ -201,7 +201,7 @@ y_pred = spline.predict(large_x_array)
 
 # Parallel bootstrap
 y_pred, se = spline.predict(x_new, return_se=True, se_method="bootstrap", 
-                           B_boot=5000, n_jobs=-1)
+                           n_boot=5000, n_jobs=-1)
 ```
 
 ## Mathematical Background

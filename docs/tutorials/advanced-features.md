@@ -18,7 +18,7 @@ Beyond basic smoothing, PSplines offers sophisticated features for specialized a
 ```python
 import numpy as np
 import matplotlib.pyplot as plt
-from psplines import PSpline, BSplineBasis, build_penalty_matrix
+from psplines import PSpline, ShapeConstraint, SlopeZeroConstraint, BSplineBasis, build_penalty_matrix
 from psplines.optimize import cross_validation, l_curve
 import scipy.sparse as sp
 from scipy.interpolate import UnivariateSpline
@@ -153,7 +153,7 @@ spline_free.fit()
 
 # Shape-constrained fit: enforce monotone increasing
 spline_mono = PSpline(x_mono, y_mono, nseg=20, lambda_=opt_lambda,
-                      shape=[{"type": "increasing"}])
+                      shape=[ShapeConstraint(type="increasing")])
 spline_mono.fit()
 
 x_eval = np.linspace(0, 5, 200)
@@ -205,8 +205,8 @@ x = np.linspace(0, 10, 80)
 y = np.sqrt(x) + 0.15 * np.random.randn(80)
 
 spline = PSpline(x, y, nseg=25, lambda_=1.0,
-                 shape=[{"type": "increasing"},
-                        {"type": "concave"}])
+                 shape=[ShapeConstraint(type="increasing"),
+                        ShapeConstraint(type="concave")])
 spline.fit()
 
 x_eval = np.linspace(0, 10, 200)
@@ -229,8 +229,8 @@ y_true = np.where(x < 5, x, 5.0) + 0.2 * np.random.randn(100)
 
 # Only enforce monotonicity for x ∈ [0, 5]
 spline = PSpline(x, y_true, nseg=30, lambda_=1.0,
-                 shape=[{"type": "increasing",
-                         "domain": (0.0, 5.0)}])
+                 shape=[ShapeConstraint(type="increasing",
+                         domain=(0.0, 5.0))])
 spline.fit()
 
 x_eval = np.linspace(0, 10, 200)
@@ -252,7 +252,7 @@ x = np.linspace(0, 5, 80)
 counts = np.random.poisson(np.exp(0.3 * x), 80)
 
 spline = PSpline(x, counts, nseg=20, lambda_=10.0, family="poisson",
-                 shape=[{"type": "increasing"}])
+                 shape=[ShapeConstraint(type="increasing")])
 spline.fit()
 
 mu_hat = spline.predict(np.linspace(0, 5, 200))

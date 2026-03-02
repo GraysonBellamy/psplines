@@ -31,12 +31,11 @@ if TYPE_CHECKING:
 
 import scipy.sparse as sp
 from scipy.optimize import minimize_scalar
-from scipy.sparse import csr_matrix, diags, hstack, vstack
-from scipy.sparse.linalg import spsolve
+from scipy.sparse import diags
 
 from .exceptions import OptimizationError
 from .penalty import difference_matrix, variable_penalty_matrix
-from .utils_math import effective_df
+from .utils_math import effective_df, solve_penalized
 
 __all__ = [
     "cross_validation",
@@ -58,21 +57,9 @@ def _solve_coef_sparse(
 ) -> np.ndarray:
     """
     Solve (BtB + lam*DtD) α = Bty with optional equality constraints C α = 0.
-    Operates fully in sparse matrices via spsolve.
     """
-    # penalized matrix
-    A = (BtB + DtD * lam).tocsr()  # type: ignore[operator]
-    if C is None:
-        return spsolve(A, Bty)
-    # build augmented system [[A, C^T]; [C, 0]]
-    nc = C.shape[0]
-    zero = csr_matrix((nc, nc))
-    top = hstack([A, C.T], format="csr")  # type: ignore[call-overload, attr-defined]
-    bot = hstack([C, zero], format="csr")  # type: ignore[call-overload]
-    A_aug = vstack([top, bot], format="csr")
-    rhs = np.concatenate([Bty, np.zeros(nc)])
-    sol = spsolve(A_aug, rhs)
-    return sol[: BtB.shape[0]]
+    P = (DtD * lam).tocsr()  # type: ignore[attr-defined]
+    return solve_penalized(BtB, Bty, P, C)
 
 
 def _irls_solve(
@@ -348,6 +335,29 @@ def _sweep_lambda(
 
 
 # ----------------------------------------------------------------------------
+def _parametric_curvature(
+    x: np.ndarray, y: np.ndarray, *, smooth: bool = True
+) -> np.ndarray:
+    """
+    Compute parametric curvature of the curve (x, y) using central differences.
+
+    Returns an array the same length as x/y, with NaN at the endpoints.
+    Optionally applies a 3-point moving average.
+    """
+    dx = (x[2:] - x[:-2]) * 0.5
+    dy = (y[2:] - y[:-2]) * 0.5
+    ddx = x[2:] - 2 * x[1:-1] + x[:-2]
+    ddy = y[2:] - 2 * y[1:-1] + y[:-2]
+    kappa = np.full_like(x, np.nan)
+    denom = (dx * dx + dy * dy) ** 1.5
+    kappa[1:-1] = np.abs(dx * ddy - dy * ddx) / denom
+    if smooth:
+        kernel = np.ones(3) / 3
+        kappa = np.convolve(kappa, kernel, mode="same")
+    return kappa
+
+
+# ----------------------------------------------------------------------------
 def l_curve(
     pspline: PSpline,
     lambda_bounds: tuple[float, float] = (1e-6, 1e6),
@@ -386,24 +396,8 @@ def l_curve(
     valid = np.isfinite(lr) & np.isfinite(lp)
     x, y, lamv = lp[valid], lr[valid], grid[valid]
 
-    # Vectorized curvature calculation
-    # central differences for dx, dy, ddx, ddy
-    dx = (x[2:] - x[:-2]) * 0.5
-    dy = (y[2:] - y[:-2]) * 0.5
-    ddx = x[2:] - 2 * x[1:-1] + x[:-2]
-    ddy = y[2:] - 2 * y[1:-1] + y[:-2]
-    kappa = np.full_like(x, np.nan)
-    denom = (dx * dx + dy * dy) ** 1.5
-    kappa[1:-1] = np.abs(dx * ddy - dy * ddx) / denom
-
-    # Optional smoothing of curvature
-    kernel = np.ones(3) / 3
-    if smooth_kappa:
-        kappa = np.convolve(kappa, kernel, mode="same")
-
-    # Identify coarse optimum
+    kappa = _parametric_curvature(x, y, smooth=smooth_kappa)
     idx = int(np.nanargmax(kappa))
-    # Edge-case warning if optimum near boundary
     if idx < 2 or idx > len(x) - 3:
         warnings.warn(
             "L-curve optimum at boundary of grid; consider expanding lambda_bounds",
@@ -422,16 +416,7 @@ def l_curve(
         valid2 = np.isfinite(lr2) & np.isfinite(lp2)
         x2, y2, lamv2 = lp2[valid2], lr2[valid2], grid2[valid2]
 
-        dx2 = (x2[2:] - x2[:-2]) * 0.5
-        dy2 = (y2[2:] - y2[:-2]) * 0.5
-        ddx2 = x2[2:] - 2 * x2[1:-1] + x2[:-2]
-        ddy2 = y2[2:] - 2 * y2[1:-1] + y2[:-2]
-        kappa2 = np.full_like(x2, np.nan)
-        denom2 = (dx2 * dx2 + dy2 * dy2) ** 1.5
-        kappa2[1:-1] = np.abs(dx2 * ddy2 - dy2 * ddx2) / denom2
-        if smooth_kappa:
-            kappa2 = np.convolve(kappa2, kernel, mode="same")
-
+        kappa2 = _parametric_curvature(x2, y2, smooth=smooth_kappa)
         idx2 = int(np.nanargmax(kappa2))
         if idx2 < 2 or idx2 > len(x2) - 3:
             warnings.warn(
@@ -578,10 +563,7 @@ def variable_penalty_cv(
                 else:
                     P = (lam * DtD_g).tocsr()
                     A_sys = (BtB + P).tocsr()  # type: ignore[possibly-undefined, operator]
-                    if C is None:
-                        coef = spsolve(A_sys, Bty)  # type: ignore[possibly-undefined]
-                    else:
-                        coef = _solve_coef_sparse(BtB, DtD_g, Bty, lam, C)  # type: ignore[possibly-undefined]
+                    coef = solve_penalized(BtB, Bty, P, C)  # type: ignore[possibly-undefined]
                     fit_vals = B @ coef
                     resid = y - fit_vals
                     if W is not None:

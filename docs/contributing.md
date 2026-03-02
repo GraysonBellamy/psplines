@@ -269,7 +269,7 @@ class TestPSpline:
         assert spline.coef is not None
         assert len(spline.coef) == spline.B.shape[1]
         assert spline.ED > 0
-        assert spline.sigma2 > 0
+        assert spline.phi_ > 0
     
     def test_prediction(self):
         """Test prediction functionality."""

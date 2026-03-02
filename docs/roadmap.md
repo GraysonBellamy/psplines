@@ -53,7 +53,7 @@ and grouped binomial (`trials` vector). Starting values `π₀ = (y+1)/(t+2)`. F
 
 Implemented: upon IRLS convergence, ED computed with converged weights `Ŵ` (eq. 2.26–2.27).
 `Cov(α̂) = φ(B'ŴB + λD'D)⁻¹` with `φ = 1` for Poisson/Binomial. SE bands on link scale via
-delta method; response-scale CI via inverse-link transform (`predict(type="response", return_se=True)`
+delta method; response-scale CI via inverse-link transform (`predict(scale="response", return_se=True)`
 returns `(mu_hat, lower, upper)`). User prior weights combine with IRLS weights per §2.12.3.
 
 ### ~~Density Estimation~~ — Done
@@ -120,7 +120,7 @@ Implemented: asymmetric penalty approach from §8.7 (eq. 8.14–8.15). Iterative
 Supports all constraint types: `"increasing"`, `"decreasing"`, `"convex"`, `"concave"`, `"nonneg"`.
 Selective domain constraints via `"domain": (lo, hi)`. Combined constraints via multiple specs.
 Works with both Gaussian and GLM families. Flat-slope subdomain penalty via
-`constraints={"slope_zero": {"domain": (lo, hi)}}`.
+`slope_zero=SlopeZeroConstraint(domain=(lo, hi))`.
 
 **Reference**: §8.7
 

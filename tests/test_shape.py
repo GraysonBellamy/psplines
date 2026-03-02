@@ -17,7 +17,7 @@ import pytest
 import scipy.sparse as sp
 from numpy.testing import assert_allclose
 
-from psplines.core import PSpline
+from psplines.core import PSpline, ShapeConstraint, SlopeZeroConstraint
 from psplines.exceptions import ValidationError
 from psplines.penalty import (
     VALID_SHAPE_TYPES,
@@ -148,7 +148,7 @@ class TestShapeConstrainedFit:
         y_true = 3 * x + 1
         y = y_true + 0.2 * np.random.randn(100)
 
-        ps = PSpline(x, y, lambda_=10, shape=[{"type": "increasing"}])
+        ps = PSpline(x, y, lambda_=10, shape=[ShapeConstraint(type="increasing")])
         ps.fit()
 
         # Fitted values should be (approximately) non-decreasing
@@ -161,7 +161,7 @@ class TestShapeConstrainedFit:
         y_true = -2 * x + 5
         y = y_true + 0.2 * np.random.randn(100)
 
-        ps = PSpline(x, y, lambda_=10, shape=[{"type": "decreasing"}])
+        ps = PSpline(x, y, lambda_=10, shape=[ShapeConstraint(type="decreasing")])
         ps.fit()
 
         diffs = np.diff(ps.fitted_values)
@@ -173,7 +173,7 @@ class TestShapeConstrainedFit:
         y_true = x**2
         y = y_true + 0.1 * np.random.randn(80)
 
-        ps = PSpline(x, y, lambda_=1, shape=[{"type": "convex"}])
+        ps = PSpline(x, y, lambda_=1, shape=[ShapeConstraint(type="convex")])
         ps.fit()
 
         # Check second differences of fitted are >= 0
@@ -191,7 +191,7 @@ class TestShapeConstrainedFit:
             x,
             y,
             lambda_=1,
-            shape=[{"type": "increasing"}, {"type": "convex"}],
+            shape=[ShapeConstraint(type="increasing"), ShapeConstraint(type="convex")],
         )
         ps.fit()
 
@@ -210,7 +210,7 @@ class TestShapeConstrainedFit:
             x,
             y,
             lambda_=1,
-            shape=[{"type": "increasing", "domain": (1.0, None)}],
+            shape=[ShapeConstraint(type="increasing", domain=(1.0, None))],
         )
         ps.fit()
 
@@ -225,11 +225,11 @@ class TestShapeConstrainedFit:
         x = np.linspace(0, 1, 50)
         y = 2 * x + 0.1 * np.random.randn(50)
 
-        ps = PSpline(x, y, lambda_=10, shape=[{"type": "increasing"}])
+        ps = PSpline(x, y, lambda_=10, shape=[ShapeConstraint(type="increasing")])
         ps.fit()
 
         assert ps.ED is not None
-        assert ps.sigma2 is not None
+        assert ps.phi_ is not None
         assert ps.se_coef is not None
         assert ps.se_fitted is not None
         assert np.all(ps.se_coef > 0)
@@ -240,7 +240,7 @@ class TestShapeConstrainedFit:
         x = np.linspace(0, 1, 50)
         y = 2 * x + 0.1 * np.random.randn(50)
 
-        ps = PSpline(x, y, lambda_=10, shape=[{"type": "increasing"}])
+        ps = PSpline(x, y, lambda_=10, shape=[ShapeConstraint(type="increasing")])
         ps.fit()
 
         x_new = np.linspace(0, 1, 20)
@@ -261,7 +261,7 @@ class TestShapeConstrainedFit:
             y,
             lambda_=10,
             family="poisson",
-            shape=[{"type": "increasing"}],
+            shape=[ShapeConstraint(type="increasing")],
         )
         ps.fit()
 
@@ -275,14 +275,14 @@ class TestShapeConstrainedFit:
         x = np.linspace(0, 1, 10)
         y = np.random.randn(10)
         with pytest.raises(ValidationError, match="shape.*type"):
-            PSpline(x, y, shape=[{"type": "invalid_type"}])
+            PSpline(x, y, shape=[ShapeConstraint(type="invalid_type")])
 
     def test_invalid_shape_not_list(self):
         """Non-list shape raises ValidationError."""
         x = np.linspace(0, 1, 10)
         y = np.random.randn(10)
         with pytest.raises(ValidationError, match="shape must be a list"):
-            PSpline(x, y, shape={"type": "increasing"})
+            PSpline(x, y, shape="increasing")  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------
@@ -291,7 +291,7 @@ class TestShapeConstrainedFit:
 
 
 class TestSlopeZeroConstraint:
-    """Tests for constraints={'slope_zero': {'domain': (lo, hi)}}."""
+    """Tests for SlopeZeroConstraint."""
 
     def test_slope_zero_at_right(self):
         """Force slope to zero beyond x=0.8."""
@@ -303,7 +303,7 @@ class TestSlopeZeroConstraint:
             x,
             y,
             lambda_=1,
-            constraints={"slope_zero": {"domain": (0.8, 1.0)}},
+            slope_zero=SlopeZeroConstraint(domain=(0.8, 1.0)),
         )
         ps.fit()
 
@@ -322,7 +322,7 @@ class TestSlopeZeroConstraint:
             x,
             y,
             lambda_=1,
-            constraints={"slope_zero": {"domain": (0.8, 1.0)}},
+            slope_zero=SlopeZeroConstraint(domain=(0.8, 1.0)),
         ).fit()
 
         # They should not be identical

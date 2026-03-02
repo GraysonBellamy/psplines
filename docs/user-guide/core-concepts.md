@@ -274,8 +274,8 @@ upper_ci = y_pred + 1.96 * se
 Empirical estimation through resampling:
 
 ```python
-y_pred, se = spline.predict(x_new, return_se=True, 
-                           se_method='bootstrap', B_boot=500)
+y_pred, se = spline.predict(x_new, return_se=True,
+                           se_method='bootstrap', n_boot=500)
 ```
 
 **Advantages**: Fewer assumptions, empirical distribution
@@ -309,7 +309,7 @@ ci_upper = y_pred + 1.96 * se_fit
 **Prediction Intervals**: Uncertainty for new observations
 ```python
 # Include both fit uncertainty and noise
-se_pred = np.sqrt(se_fit**2 + spline.sigma2)  # Add noise variance
+se_pred = np.sqrt(se_fit**2 + spline.phi_)  # Add noise variance
 pi_lower = y_pred - 1.96 * se_pred  
 pi_upper = y_pred + 1.96 * se_pred
 ```
@@ -398,22 +398,22 @@ coefficients **violate** the desired shape, and apply a huge penalty ($\kappa$)
 only on those violations.  Iterate until all violations vanish:
 
 ```python
-from psplines import PSpline
+from psplines import PSpline, ShapeConstraint
 
 # Monotone increasing fit
 spline = PSpline(x, y, nseg=20, lambda_=1.0,
-                 shape=[{"type": "increasing"}])
+                 shape=[ShapeConstraint(type="increasing")])
 spline.fit()
 
 # Convex fit
 spline = PSpline(x, y, nseg=20, lambda_=1.0,
-                 shape=[{"type": "convex"}])
+                 shape=[ShapeConstraint(type="convex")])
 spline.fit()
 
 # Multiple constraints and selective domain
 spline = PSpline(x, y, nseg=20, lambda_=1.0,
-                 shape=[{"type": "increasing"},
-                        {"type": "concave", "domain": (0.0, 5.0)}])
+                 shape=[ShapeConstraint(type="increasing"),
+                        ShapeConstraint(type="concave", domain=(0.0, 5.0))])
 spline.fit()
 ```
 

@@ -9,6 +9,10 @@ if TYPE_CHECKING:
 import matplotlib.pyplot as plt
 import numpy as np
 
+from .exceptions import PSplineError
+
+__all__ = ["plot_fit", "plot_derivatives"]
+
 
 def plot_fit(
     pspline: PSpline, title: str = "P-spline Fit", subsample: int = 1000
@@ -16,20 +20,23 @@ def plot_fit(
     """
     Plot data and P-spline fit, subsampling for large datasets (inspired by Figure 2.9, Page 29).
 
-    Parameters:
-    - pspline: PSpline object
-    - title: Plot title
-    - subsample: Number of points to plot (default: 1000)
+    Parameters
+    ----------
+    pspline : PSpline
+        Fitted PSpline object.
+    title : str
+        Plot title.
+    subsample : int
+        Number of points to plot (default: 1000).
     """
     n = len(pspline.x)  # type: ignore[arg-type]
     if n > subsample:
-        idx = np.random.choice(n, subsample, replace=False)
-        idx = np.sort(idx)
+        # Deterministic stride-based subsampling
+        idx = np.linspace(0, n - 1, subsample, dtype=int)
         x_plot = np.asarray(pspline.x)[idx]
         y_plot = np.asarray(pspline.y)[idx]
         fit_plot = np.asarray(pspline.fitted_values)[idx]
     else:
-        idx = np.arange(n)
         x_plot = np.asarray(pspline.x)
         y_plot = np.asarray(pspline.y)
         fit_plot = np.asarray(pspline.fitted_values)
@@ -54,15 +61,18 @@ def plot_derivatives(
     """
     Plot derivatives of the P-spline smoothed curve (Section 2.5, Page 20).
 
-    Parameters:
-    - pspline: PSpline object
-    - deriv_orders: List of derivative orders to plot (default: [1])
-    - x_new: Array of x values to evaluate derivatives (default: original x)
-    - title: Plot title
-    - subsample: Number of points to plot (default: 1000)
-
-    Returns:
-    - None (displays plot)
+    Parameters
+    ----------
+    pspline : PSpline
+        Fitted PSpline object.
+    deriv_orders : list of int, optional
+        List of derivative orders to plot (default: [1]).
+    x_new : ndarray, optional
+        Array of x values to evaluate derivatives (default: original x).
+    title : str
+        Plot title.
+    subsample : int
+        Number of points to plot (default: 1000).
     """
     if deriv_orders is None:
         deriv_orders = [1]
@@ -73,16 +83,11 @@ def plot_derivatives(
     x_eval: np.ndarray = np.asarray(pspline.x) if x_new is None else np.array(x_new)
     n = len(x_eval)
 
-    # Ensure boundaries are included
+    # Deterministic stride-based subsampling
     if n > subsample:
-        boundary_indices = [0, n - 1]
-        subsample_inner = max(0, subsample - len(boundary_indices))
-        inner_indices = np.random.choice(n - 2, subsample_inner, replace=False) + 1
-        idx = np.concatenate([boundary_indices, inner_indices])
-        idx = np.sort(idx)
+        idx = np.linspace(0, n - 1, subsample, dtype=int)
         x_plot = x_eval[idx]
     else:
-        idx = np.arange(n)
         x_plot = x_eval
 
     plt.figure()
@@ -119,7 +124,7 @@ def plot_derivatives(
                 fontsize=8,
                 verticalalignment="bottom",
             )
-        except Exception as e:
+        except (PSplineError, ValueError) as e:
             warnings.warn(
                 f"Could not compute derivative of order {order}: {e}",
                 stacklevel=2,

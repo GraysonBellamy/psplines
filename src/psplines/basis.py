@@ -3,18 +3,24 @@ psplines.basis – Efficient B-spline basis generation
 =================================================
 
 Provides fast, sparse-friendly construction of:
-  • B-spline regression basis
-  • k-th derivative basis
+  - B-spline regression basis
+  - k-th derivative basis
 
 Leverages SciPy's BSpline for vectorized evaluation.
 """
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import numpy as np
 import scipy.sparse as sp
-from numpy.typing import ArrayLike, NDArray
 from scipy.interpolate import BSpline
 
 from .exceptions import ValidationError
+
+if TYPE_CHECKING:
+    from numpy.typing import ArrayLike, NDArray
 
 __all__ = ["b_spline_basis", "b_spline_derivative_basis"]
 

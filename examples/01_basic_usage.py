@@ -36,7 +36,7 @@ def main():
     spline.fit()
     print(f"   Fitted with {spline.nseg} segments")
     print(f"   Effective degrees of freedom: {spline.ED:.2f}")
-    print(f"   Residual variance: {spline.sigma2:.6f}")
+    print(f"   Residual variance: {spline.phi_:.6f}")
 
     # Make predictions
     print("\n3. Making predictions...")

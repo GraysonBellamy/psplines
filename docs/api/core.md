@@ -25,7 +25,7 @@ The core module contains the main `PSpline` class that implements penalized B-sp
 
 ```python
 import numpy as np
-from psplines import PSpline
+from psplines import PSpline, ShapeConstraint, SlopeZeroConstraint
 
 # Generate data
 x = np.linspace(0, 1, 50)
@@ -48,7 +48,7 @@ y_pred, se = spline.predict(x_new, return_se=True)
 
 # Bootstrap confidence intervals
 y_pred, se_boot = spline.predict(x_new, return_se=True,
-                                se_method="bootstrap", B_boot=1000)
+                                se_method="bootstrap", n_boot=1000)
 ```
 
 ### Derivative Computation
@@ -88,13 +88,13 @@ spline.fit()
 
 # Predictions are positive (response scale)
 x_new = np.linspace(1851, 1962, 200)
-mu_pred = spline.predict(x_new)  # type="response" is default
+mu_pred = spline.predict(x_new)  # scale="response" is default
 
 # Confidence intervals on response scale (asymmetric, always positive)
 mu_hat, lower, upper = spline.predict(x_new, return_se=True)
 
 # Linear predictor (log scale)
-eta = spline.predict(x_new, type="link")
+eta = spline.predict(x_new, scale="link")
 ```
 
 ### Shape-Constrained Smoothing
@@ -105,7 +105,7 @@ x = np.linspace(0, 5, 60)
 y = np.log(x + 1) + 0.2 * np.random.randn(60)
 
 spline = PSpline(x, y, nseg=20, lambda_=1.0,
-                 shape=[{"type": "increasing"}])
+                 shape=[ShapeConstraint(type="increasing")])
 spline.fit()
 
 # All first differences of the fitted coefficients will be ≥ 0
@@ -115,22 +115,22 @@ y_pred = spline.predict(np.linspace(0, 5, 200))
 ```python
 # Concave fit
 spline = PSpline(x, y, nseg=20, lambda_=1.0,
-                 shape=[{"type": "concave"}])
+                 shape=[ShapeConstraint(type="concave")])
 spline.fit()
 ```
 
 ```python
 # Multiple constraints: increasing AND concave
 spline = PSpline(x, y, nseg=20, lambda_=1.0,
-                 shape=[{"type": "increasing"}, {"type": "concave"}])
+                 shape=[ShapeConstraint(type="increasing"), ShapeConstraint(type="concave")])
 spline.fit()
 ```
 
 ```python
 # Selective domain constraint (monotone only for x ≤ 3)
 spline = PSpline(x, y, nseg=20, lambda_=1.0,
-                 shape=[{"type": "increasing",
-                         "domain": (float(x.min()), 3.0)}])
+                 shape=[ShapeConstraint(type="increasing",
+                         domain=(float(x.min()), 3.0))])
 spline.fit()
 ```
 
@@ -246,17 +246,18 @@ mean, lower, upper = spline.predict(x_new, se_method="bayes")
 - **`constraints`**: Dictionary specifying boundary constraints
     - `"deriv"`: Derivative constraints at boundaries
     - Example: `{"deriv": {"order": 1, "initial": 0, "final": 0}}`
-    - `"slope_zero"`: Enforce flat slope in a subdomain
-    - Example: `{"slope_zero": {"domain": (2.0, 4.0)}}`
+
+- **`slope_zero`**: Enforce flat slope in a subdomain
+    - Example: `slope_zero=SlopeZeroConstraint(domain=(2.0, 4.0))`
 
 ### Shape Constraint Parameters
 
-- **`shape`**: List of shape constraint specifications (§8.7)
-    - Each entry is a dict with key `"type"` (required) and optional `"domain"`
+- **`shape`**: List of `ShapeConstraint` specifications (§8.7)
+    - Each entry is a `ShapeConstraint` with `type` (required) and optional `domain`
     - Supported types: `"increasing"`, `"decreasing"`, `"convex"`, `"concave"`, `"nonneg"`
-    - Optional `"domain": (lo, hi)` restricts the constraint to that $x$-range
+    - Optional `domain=(lo, hi)` restricts the constraint to that $x$-range
     - Multiple constraints can be combined (e.g. increasing + concave)
-    - Example: `[{"type": "increasing"}, {"type": "concave", "domain": (0, 5)}]`
+    - Example: `[ShapeConstraint(type="increasing"), ShapeConstraint(type="concave", domain=(0, 5))]`
 
 - **`shape_kappa`**: Large penalty weight for shape violations (default $10^8$)
     - Higher values enforce the constraint more strictly
@@ -290,7 +291,7 @@ After fitting, the following attributes are available:
 - **`fitted_values`**: Fitted values at input points
 - **`knots`**: Knot vector used for B-splines
 - **`ED`**: Effective degrees of freedom
-- **`sigma2`**: Residual variance estimate
+- **`phi_`**: Residual variance estimate
 - **`se_coef`**: Standard errors of coefficients
 - **`se_fitted`**: Standard errors of fitted values
 

@@ -56,7 +56,7 @@ spline.fit()
 
 print(f"Optimal λ: {optimal_lambda:.6f}")
 print(f"Effective DoF: {spline.ED:.2f}")
-print(f"Estimated σ²: {spline.sigma2:.6f}")
+print(f"Estimated σ²: {spline.phi_:.6f}")
 ```
 
 ## Method 1: Analytical Standard Errors
@@ -109,7 +109,7 @@ print(f"Where:")
 print(f"  - B is the basis matrix")
 print(f"  - P is the penalty matrix")
 print(f"  - b(x) is the basis vector at point x")
-print(f"  - σ² = {spline.sigma2:.6f} (estimated from residuals)")
+print(f"  - σ² = {spline.phi_:.6f} (estimated from residuals)")
 
 # Visualize pointwise standard errors
 plt.figure(figsize=(12, 5))
@@ -153,7 +153,7 @@ y_pred_bootstrap, se_bootstrap = spline.predict(
     return_se=True, 
     se_method='bootstrap',
     bootstrap_method='parametric',
-    B_boot=500,  # Number of bootstrap samples
+    n_boot=500,  # Number of bootstrap samples
     n_jobs=2     # Parallel processing
 )
 
@@ -208,7 +208,7 @@ y_pred_resid_boot, se_resid_boot = spline.predict(
     return_se=True, 
     se_method='bootstrap',
     bootstrap_method='residual',
-    B_boot=500,
+    n_boot=500,
     n_jobs=2
 )
 
@@ -275,7 +275,7 @@ for b in range(n_boot):
         print(f"Bootstrap sample {b}/{n_boot}")
     
     # Generate bootstrap sample
-    y_boot = spline.predict(x) + np.sqrt(spline.sigma2) * np.random.randn(len(x))
+    y_boot = spline.predict(x) + np.sqrt(spline.phi_) * np.random.randn(len(x))
     
     # Fit new spline
     spline_boot = PSpline(x, y_boot, nseg=30, lambda_=optimal_lambda)
@@ -446,9 +446,9 @@ import time
 methods_to_time = [
     ('Analytical', lambda: spline.predict(x_eval, return_se=True, se_method='analytic')),
     ('Bootstrap (100)', lambda: spline.predict(x_eval, return_se=True, se_method='bootstrap', 
-                                             B_boot=100, n_jobs=1)),
+                                             n_boot=100, n_jobs=1)),
     ('Bootstrap (500)', lambda: spline.predict(x_eval, return_se=True, se_method='bootstrap', 
-                                             B_boot=500, n_jobs=1))
+                                             n_boot=500, n_jobs=1))
 ]
 
 print("=== Performance Comparison ===")
@@ -554,7 +554,7 @@ def simultaneous_confidence_bands(spline, x_eval, confidence_level=0.95, n_boot=
     
     for b in range(n_boot):
         # Generate bootstrap sample
-        y_boot = spline.predict(spline.x) + np.sqrt(spline.sigma2) * np.random.randn(spline.n)
+        y_boot = spline.predict(spline.x) + np.sqrt(spline.phi_) * np.random.randn(spline.n)
         
         # Fit bootstrap spline
         spline_boot = PSpline(spline.x, y_boot, nseg=spline.nseg, lambda_=spline.lambda_)
@@ -625,7 +625,7 @@ def prediction_intervals(spline, x_eval, confidence_level=0.95, method='analytic
     y_pred, se_model = spline.predict(x_eval, return_se=True, se_method=method)
     
     # Add noise uncertainty
-    se_total = np.sqrt(se_model**2 + spline.sigma2)
+    se_total = np.sqrt(se_model**2 + spline.phi_)
     
     # Create prediction intervals
     alpha = 1 - confidence_level
@@ -666,7 +666,7 @@ print("=== Interval Comparison ===")
 print(f"Average confidence interval width: {np.mean(2 * 1.96 * se_model_pi):.4f}")
 print(f"Average prediction interval width: {np.mean(2 * 1.96 * se_total_pi):.4f}")
 print(f"Model uncertainty contribution: {np.mean(se_model_pi**2):.6f}")
-print(f"Noise uncertainty contribution: {spline.sigma2:.6f}")
+print(f"Noise uncertainty contribution: {spline.phi_:.6f}")
 print(f"Total uncertainty: {np.mean(se_total_pi**2):.6f}")
 ```
 

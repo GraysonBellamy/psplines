@@ -61,7 +61,7 @@ plt.show()
 # 8. Check model properties
 print(f"Effective degrees of freedom: {spline.ED:.2f}")
 print(f"Optimal lambda: {optimal_lambda:.6f}")
-print(f"Residual variance: {spline.sigma2:.6f}")
+print(f"Residual variance: {spline.phi_:.6f}")
 ```
 
 That's it! You've successfully fitted a P-spline, optimized parameters, and quantified uncertainty.
@@ -153,9 +153,11 @@ trend = spline.predict(x_numeric)
 
 ### Shape-Constrained Smoothing
 ```python
+from psplines import ShapeConstraint
+
 # Enforce monotone increasing fit
 spline = PSpline(x, y, nseg=20, lambda_=1.0,
-                 shape=[{"type": "increasing"}])
+                 shape=[ShapeConstraint(type="increasing")])
 spline.fit()
 # The fitted curve is guaranteed to be non-decreasing
 ```

@@ -191,7 +191,7 @@ class TestPoissonPSpline:
         ps = PSpline(years, counts, nseg=15, lambda_=50, family="poisson").fit()
 
         x_new = np.linspace(years[0], years[-1], 50)
-        mu_pred = ps.predict(x_new, type="response")
+        mu_pred = ps.predict(x_new, scale="response")
         assert np.all(mu_pred > 0)
 
     def test_poisson_predict_link_scale(self, coal_mine_data):
@@ -200,8 +200,8 @@ class TestPoissonPSpline:
         ps = PSpline(years, counts, nseg=15, lambda_=50, family="poisson").fit()
 
         x_new = np.linspace(years[0], years[-1], 50)
-        eta_pred = ps.predict(x_new, type="link")
-        mu_pred = ps.predict(x_new, type="response")
+        eta_pred = ps.predict(x_new, scale="link")
+        mu_pred = ps.predict(x_new, scale="response")
         assert_allclose(np.exp(eta_pred), mu_pred, rtol=1e-10)
 
     def test_poisson_se_bands(self, coal_mine_data):
@@ -210,7 +210,7 @@ class TestPoissonPSpline:
         ps = PSpline(years, counts, nseg=15, lambda_=50, family="poisson").fit()
 
         x_new = np.linspace(years[5], years[-5], 30)
-        mu_hat, lower, upper = ps.predict(x_new, return_se=True, type="response")
+        mu_hat, lower, upper = ps.predict(x_new, return_se=True, scale="response")
 
         assert np.all(mu_hat > 0)
         assert np.all(lower > 0)
@@ -224,7 +224,7 @@ class TestPoissonPSpline:
         ps = PSpline(years, counts, nseg=15, lambda_=50, family="poisson").fit()
 
         x_new = np.linspace(years[5], years[-5], 30)
-        eta_hat, se_eta = ps.predict(x_new, return_se=True, type="link")
+        eta_hat, se_eta = ps.predict(x_new, return_se=True, scale="link")
 
         assert np.all(np.isfinite(eta_hat))
         assert np.all(se_eta > 0)
@@ -321,7 +321,7 @@ class TestBinomialPSpline:
         ps = PSpline(age, y, nseg=15, lambda_=10, family="binomial").fit()
 
         x_new = np.linspace(age.min(), age.max(), 50)
-        pi_pred = ps.predict(x_new, type="response")
+        pi_pred = ps.predict(x_new, scale="response")
         assert np.all(pi_pred >= 0)
         assert np.all(pi_pred <= 1)
 
@@ -331,7 +331,7 @@ class TestBinomialPSpline:
         ps = PSpline(age, y, nseg=15, lambda_=10, family="binomial").fit()
 
         x_new = np.linspace(age.min() + 5, age.max() - 5, 30)
-        pi_hat, lower, upper = ps.predict(x_new, return_se=True, type="response")
+        pi_hat, lower, upper = ps.predict(x_new, return_se=True, scale="response")
 
         assert np.all(lower >= 0)
         assert np.all(upper <= 1)
@@ -404,8 +404,8 @@ class TestGLMUncertainty:
         """Invalid type parameter is rejected."""
         years, counts = coal_mine_data
         ps = PSpline(years, counts, nseg=15, lambda_=10, family="poisson").fit()
-        with pytest.raises(ValidationError, match="type must be"):
-            ps.predict(years[:5], type="invalid")
+        with pytest.raises(ValidationError, match="scale must be"):
+            ps.predict(years[:5], scale="invalid")
 
 
 # ---------------------------------------------------------------------------
@@ -524,7 +524,7 @@ class TestGaussianBackwardCompat:
         assert_allclose(ps_gaussian.coef, ps_default.coef, rtol=1e-12)
         assert_allclose(ps_gaussian.fitted_values, ps_default.fitted_values, rtol=1e-12)
         assert_allclose(ps_gaussian.ED, ps_default.ED, rtol=1e-12)
-        assert_allclose(ps_gaussian.sigma2, ps_default.sigma2, rtol=1e-12)
+        assert_allclose(ps_gaussian.phi_, ps_default.phi_, rtol=1e-12)
 
     def test_gaussian_predict_consistency(self):
         """Predictions remain consistent for Gaussian family."""
@@ -549,7 +549,7 @@ class TestGaussianBackwardCompat:
         ps = PSpline(self.x, self.y, nseg=15, weights=w).fit()
 
         assert ps.coef is not None
-        assert ps.sigma2 > 0
+        assert ps.phi_ > 0
 
     def test_repr_includes_family(self):
         """repr shows family name."""
@@ -622,8 +622,8 @@ class TestConvergenceAndEdgeCases:
         ps = PSpline(years, counts, nseg=15, lambda_=50, family="poisson").fit()
 
         x_new = np.linspace(years[0], years[-1], 30)
-        eta = ps.predict(x_new, type="link")
-        mu = ps.predict(x_new, type="response")
+        eta = ps.predict(x_new, scale="link")
+        mu = ps.predict(x_new, scale="response")
         assert_allclose(np.exp(eta), mu, rtol=1e-10)
 
 

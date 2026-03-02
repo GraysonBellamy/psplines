@@ -119,7 +119,7 @@ spline.fit()
 
 print("✓ PSplines installed successfully!")
 print(f"  - Effective DoF: {spline.ED:.2f}")
-print(f"  - Residual variance: {spline.sigma2:.4f}")
+print(f"  - Residual variance: {spline.phi_:.4f}")
 ```
 
 ## Testing Optional Features
@@ -149,7 +149,7 @@ try:
     # Test bootstrap with parallel processing
     x_new = np.linspace(0, 1, 10)
     y_pred, se = spline.predict(x_new, return_se=True, 
-                               se_method="bootstrap", B_boot=100, n_jobs=2)
+                               se_method="bootstrap", n_boot=100, n_jobs=2)
     print("✓ Parallel bootstrap working")
 except ImportError as e:
     print(f"✗ Parallel processing not available: {e}")

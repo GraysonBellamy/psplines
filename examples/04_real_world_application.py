@@ -96,7 +96,7 @@ def forecast_with_uncertainty(spline, t_obs, n_forecast=30, method="linear_trend
         )
 
         # Estimate forecast uncertainty (increases with time)
-        base_se = np.sqrt(spline.sigma2)
+        base_se = np.sqrt(spline.phi_)
         forecast_se = base_se * np.sqrt(1 + 0.1 * np.arange(1, n_forecast + 1))
 
     return t_forecast, forecast_values, forecast_se
