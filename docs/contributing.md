@@ -316,17 +316,17 @@ open htmlcov/index.html
 
 ### Building Documentation
 
-The documentation uses MkDocs with Material theme:
+The documentation uses [Zensical](https://zensical.org/) (by the Material for MkDocs team):
 
 ```bash
 # Install documentation dependencies
-pip install mkdocs mkdocs-material mkdocstrings[python]
+pip install zensical mkdocstrings-python
 
 # Serve locally
-mkdocs serve
+zensical serve
 
 # Build static site
-mkdocs build
+zensical build
 ```
 
 ### Adding Examples
@@ -364,7 +364,7 @@ Before creating a release:
 2. **Update CHANGELOG.md** with new features and fixes
 3. **Run full test suite**: `pytest tests/ -v`
 4. **Check code quality**: `ruff check . && mypy src/psplines`
-5. **Build documentation**: `mkdocs build`
+5. **Build documentation**: `zensical build`
 6. **Test examples**: Run all example scripts
 7. **Update dependencies** if needed
 
@@ -422,7 +422,7 @@ mypy src/psplines
 pytest tests/ -v --cov=psplines
 
 # Documentation
-mkdocs serve
+zensical serve
 
 # Commit workflow
 git checkout -b feature/my-feature
