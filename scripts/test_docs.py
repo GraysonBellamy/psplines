@@ -33,8 +33,8 @@ def main():
     os.chdir(project_root)
 
     tests = [
-        ("mkdocs --version", "Check MkDocs installation"),
-        ("mkdocs build --strict", "Build documentation"),
+        ("zensical --version", "Check Zensical installation"),
+        ("zensical build --strict", "Build documentation"),
         (
             "python -c \"import psplines; print('PSplines import successful')\"",
             "Test PSplines import",
@@ -44,7 +44,7 @@ def main():
     # Additional checks
     print("\n📋 Checking required files...")
     required_files = [
-        "mkdocs.yml",
+        "zensical.toml",
         "docs/index.md",
         "docs/api/core.md",
         "docs/user-guide/getting-started.md",
@@ -82,7 +82,7 @@ def main():
     print("\n" + "=" * 50)
     if all_passed:
         print("🎉 All documentation tests passed!")
-        print("💡 To serve locally, run: mkdocs serve")
+        print("💡 To serve locally, run: zensical serve")
         return 0
     else:
         print("❌ Some documentation tests failed")

@@ -32,11 +32,11 @@ docs: docs-serve
 docs-serve:
 	@echo "🚀 Starting documentation server..."
 	@echo "📖 Documentation will be available at http://127.0.0.1:8000"
-	uv run mkdocs serve
+	uv run zensical serve
 
 docs-build:
 	@echo "🔨 Building documentation..."
-	uv run mkdocs build --verbose
+	uv run zensical build --strict
 
 docs-test:
 	@echo "🧪 Testing documentation..."
