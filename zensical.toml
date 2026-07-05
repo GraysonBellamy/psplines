@@ -90,6 +90,11 @@ toggle.name = "Switch to light mode"
 # Extra (social links)
 # ----------------------------------------------------------------------------
 [[project.extra.social]]
+icon = "fontawesome/solid/house"
+link = "https://graysonbellamy.dev"
+name = "graysonbellamy.dev"
+
+[[project.extra.social]]
 icon = "fontawesome/brands/github"
 link = "https://github.com/graysonbellamy/psplines"
 
