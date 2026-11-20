@@ -41,7 +41,10 @@ B-splines are piecewise polynomials that provide:
 **Local Support**: Each basis function is non-zero only over a small interval
 ```python
 # Example: basis functions have limited influence
-basis = BSplineBasis(degree=3, n_segments=10, domain=(0, 1))
+import numpy as np
+from psplines import b_spline_basis
+
+B, knots = b_spline_basis(np.linspace(0, 1, 200), xl=0.0, xr=1.0, nseg=10, degree=3)
 # Each function affects only ~4 segments
 ```
 
@@ -159,16 +162,17 @@ plt.title('Residual Analysis')
 The most critical parameter requiring automatic selection:
 
 #### Cross-Validation Approach
-Estimates out-of-sample prediction error:
+Estimates out-of-sample prediction error. `cross_validation` minimizes the
+generalized cross-validation (GCV) score, a closed-form approximation to
+leave-one-out CV:
 
 ```python
 from psplines.optimize import cross_validation
 
-# k-fold cross-validation
+# Generalized cross-validation over a search interval for λ
 optimal_lambda, cv_score = cross_validation(
     spline, 
-    cv_method='kfold', 
-    k_folds=5
+    lambda_bounds=(1e-6, 1e6)
 )
 ```
 
@@ -179,9 +183,9 @@ optimal_lambda, cv_score = cross_validation(
 Balances fit quality and model complexity:
 
 ```python
-from psplines.optimize import aic_selection
+from psplines.optimize import aic
 
-optimal_lambda, aic_score = aic_selection(spline)
+optimal_lambda, aic_score = aic(spline)
 ```
 
 **Pros**: Fast, good approximation
@@ -280,22 +284,6 @@ y_pred, se = spline.predict(x_new, return_se=True,
 
 **Advantages**: Fewer assumptions, empirical distribution
 
-#### Bayesian Inference
-Full posterior distribution (requires PyMC):
-
-```python
-# Standard Bayesian P-spline (single λ, §3.5)
-trace = spline.bayes_fit(draws=1000, tune=1000)
-
-# Adaptive Bayesian P-spline (per-difference λ_j for spatially varying smoothness)
-trace = spline.bayes_fit(draws=1000, tune=1000, adaptive=True)
-
-# Posterior credible intervals (works with either mode)
-mean, lower, upper = spline.predict(x_new, return_se=True, se_method='bayes')
-```
-
-**Advantages**: Full uncertainty quantification, principled approach. The standard mode uses a single global penalty matching the book's formulation; the adaptive mode allows different smoothness in different regions of the curve.
-
 ### Confidence vs. Prediction Intervals
 
 **Confidence Intervals**: Uncertainty in the mean function
@@ -361,13 +349,14 @@ successes = np.random.binomial(trials, 1 / (1 + np.exp(-(dose - 5))))
 spline = PSpline(dose, successes, family="binomial", trials=trials, nseg=15)
 spline.fit()
 
-# Fitted probabilities are bounded in [0, 1]
-pi_hat = spline.predict(dose)
+# With trials, the response scale is expected counts t·π (bounded in [0, t]);
+# fitted probabilities in [0, 1] come from the link (logit) scale
+pi_hat = 1 / (1 + np.exp(-spline.predict(dose, scale="link")))
 ```
 
 ### Uncertainty for GLM Models
 
-Standard errors for GLM P-splines are computed on the **link scale** and transformed to the response scale via the inverse link. This produces asymmetric confidence intervals that respect natural bounds (positive for Poisson, [0, 1] for Binomial):
+Standard errors for GLM P-splines are computed on the **link scale** and transformed to the response scale via the inverse link. This produces asymmetric confidence intervals that respect natural bounds (positive for Poisson, [0, t] for Binomial with t trials; [0, 1] when Bernoulli):
 
 ```python
 mu_hat, lower, upper = spline.predict(x_new, return_se=True)
@@ -488,12 +477,16 @@ See the [Whittaker Smoother API](../api/whittaker.md) for full details.
 P-splines exploit sparsity for efficiency:
 
 ```python
-# B-spline basis matrix is sparse
-print(f"Basis matrix shape: {spline.basis_matrix.shape}")
-print(f"Basis matrix density: {spline.basis_matrix.nnz / spline.basis_matrix.size:.3f}")
+from psplines import difference_matrix
+
+# B-spline basis matrix is sparse (available after fit())
+B = spline.B
+print(f"Basis matrix shape: {B.shape}")
+print(f"Basis matrix density: {B.nnz / (B.shape[0] * B.shape[1]):.3f}")
 
 # Penalty matrix is also sparse and banded
-P = spline.penalty_matrix
+D = difference_matrix(B.shape[1], spline.penalty_order)
+P = D.T @ D
 print(f"Penalty matrix bandwidth: ~{2*spline.penalty_order + 1}")
 ```
 
@@ -510,10 +503,10 @@ Understanding performance characteristics:
 While P-splines typically use uniform knots, understanding knot placement helps:
 
 ```python
-# Examine knot structure
-basis = spline.basis
-print(f"Interior knots: {basis.knots[basis.degree:-basis.degree]}")
-print(f"Boundary knots: {basis.knots[:basis.degree]} and {basis.knots[-basis.degree:]}")
+# Examine knot structure (available after fit())
+knots, deg = spline.knots, spline.degree
+print(f"Interior knots: {knots[deg:-deg]}")
+print(f"Boundary knots: {knots[:deg]} and {knots[-deg:]}")
 ```
 
 **Uniform knots**: Work well for most applications

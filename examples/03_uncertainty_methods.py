@@ -6,7 +6,6 @@ Example 3: Uncertainty Quantification Methods
 This example demonstrates different methods for quantifying uncertainty in P-spline fits:
 1. Analytical standard errors (delta method)
 2. Parametric bootstrap
-3. Bayesian credible intervals
 """
 
 import warnings
@@ -47,7 +46,7 @@ def compare_uncertainty_methods(spline, x_pred, n_bootstrap=1000):
         y_pred_analytical, se_analytical = spline.predict(
             x_pred, return_se=True, se_method="analytic"
         )
-        results["analytical"] = (y_pred_analytical, se_analytical, None)
+        results["analytical"] = (y_pred_analytical, se_analytical)
         print("    ✓ Analytical method completed")
     except Exception as e:
         print(f"    ✗ Analytical method failed: {e}")
@@ -64,31 +63,11 @@ def compare_uncertainty_methods(spline, x_pred, n_bootstrap=1000):
             n_jobs=1,
             seed=42,
         )
-        results["bootstrap"] = (y_pred_bootstrap, se_bootstrap, None)
+        results["bootstrap"] = (y_pred_bootstrap, se_bootstrap)
         print("    ✓ Bootstrap method completed")
     except Exception as e:
         print(f"    ✗ Bootstrap method failed: {e}")
         results["bootstrap"] = None
-
-    # 3. Bayesian credible intervals
-    print("  - Computing Bayesian credible intervals...")
-    try:
-        # First fit Bayesian model (this may take a while)
-        print("    Sampling posterior (this may take 30-60 seconds)...")
-        spline.bayes_fit(draws=1000, tune=500, chains=2, cores=1)
-
-        mean_bayes, lower_bayes, upper_bayes = spline.predict(
-            x_pred, se_method="bayes", hdi_prob=0.95
-        )
-
-        # Convert to standard error approximation
-        se_bayes = (upper_bayes - lower_bayes) / (2 * 1.96)  # Approximate
-        results["bayesian"] = (mean_bayes, se_bayes, (lower_bayes, upper_bayes))
-        print("    ✓ Bayesian method completed")
-
-    except Exception as e:
-        print(f"    ✗ Bayesian method failed: {e}")
-        results["bayesian"] = None
 
     return results
 
@@ -149,14 +128,14 @@ def main():
     )
 
     # Plot different uncertainty methods
-    colors = {"analytical": "blue", "bootstrap": "red", "bayesian": "purple"}
-    alphas = {"analytical": 0.3, "bootstrap": 0.2, "bayesian": 0.25}
+    colors = {"analytical": "blue", "bootstrap": "red"}
+    alphas = {"analytical": 0.3, "bootstrap": 0.2}
 
     for method, result in results.items():
         if result is None:
             continue
 
-        y_pred, se, bounds = result
+        y_pred, se = result
         color = colors[method]
         alpha = alphas[method]
 
@@ -171,27 +150,15 @@ def main():
         )
 
         # Plot uncertainty bands
-        if bounds is not None:  # Bayesian case with credible intervals
-            lower, upper = bounds
-            plt.fill_between(
-                x_pred,
-                lower,
-                upper,
-                alpha=alpha,
-                color=color,
-                label=f"{method.capitalize()} 95% CI",
-                zorder=1,
-            )
-        else:  # Analytical or bootstrap with standard errors
-            plt.fill_between(
-                x_pred,
-                y_pred - 1.96 * se,
-                y_pred + 1.96 * se,
-                alpha=alpha,
-                color=color,
-                label=f"{method.capitalize()} 95% CI",
-                zorder=1,
-            )
+        plt.fill_between(
+            x_pred,
+            y_pred - 1.96 * se,
+            y_pred + 1.96 * se,
+            alpha=alpha,
+            color=color,
+            label=f"{method.capitalize()} 95% CI",
+            zorder=1,
+        )
 
     plt.title("Uncertainty Quantification Methods Comparison", fontsize=14)
     plt.xlabel("x")
@@ -206,11 +173,7 @@ def main():
         for method, result in results.items():
             if result is None:
                 continue
-            _, se, bounds = result
-
-            if bounds is not None:  # Convert Bayesian bounds to SE
-                lower, upper = bounds
-                se = (upper - lower) / (2 * 1.96)
+            _, se = result
 
             plt.plot(
                 x_pred,
@@ -238,13 +201,9 @@ def main():
         for method, result in results.items():
             if result is None:
                 continue
-            y_pred, se, bounds = result
-
-            if bounds is not None:
-                lower, upper = bounds
-            else:
-                lower = y_pred - 1.96 * se
-                upper = y_pred + 1.96 * se
+            y_pred, se = result
+            lower = y_pred - 1.96 * se
+            upper = y_pred + 1.96 * se
 
             # Calculate coverage (proportion of true values within CI)
             coverage = np.mean((y_true_pred >= lower) & (y_true_pred <= upper))
@@ -328,7 +287,7 @@ def main():
         if result is None:
             print(f"     - {method.capitalize()}: Failed")
         else:
-            y_pred, se, bounds = result
+            y_pred, se = result
             avg_se = np.mean(se)
             print(f"     - {method.capitalize()}: Average SE = {avg_se:.4f}")
 
@@ -338,11 +297,8 @@ def main():
             else:
                 y_true_pred = np.interp(x_pred, x, y_true)
 
-            if bounds is not None:
-                lower, upper = bounds
-            else:
-                lower = y_pred - 1.96 * se
-                upper = y_pred + 1.96 * se
+            lower = y_pred - 1.96 * se
+            upper = y_pred + 1.96 * se
 
             coverage = np.mean((y_true_pred >= lower) & (y_true_pred <= upper))
             print(f"       Coverage: {coverage:.1%}")

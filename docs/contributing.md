@@ -41,9 +41,9 @@ source .venv/bin/activate  # Linux/macOS
 .venv\Scripts\activate  # Windows
 ```
 
-Alternatively, with pip:
+Alternatively, with pip (>= 25.1):
 ```bash
-pip install -e .[dev]
+pip install -e . --group dev
 ```
 
 ### 3. Verify Installation
@@ -177,23 +177,17 @@ Use NumPy-style docstrings:
 
 ```python
 def cross_validation(
-    spline: PSpline,
-    lambda_min: float = 1e-6,
-    lambda_max: float = 1e3,
-    n_lambda: int = 50
-) -> Tuple[float, float]:
+    pspline: PSpline,
+    lambda_bounds: tuple[float, float] = (1e-6, 1e6),
+) -> tuple[float, float]:
     """Find optimal smoothing parameter using cross-validation.
     
     Parameters
     ----------
-    spline : PSpline
+    pspline : PSpline
         P-spline object to optimize
-    lambda_min : float, default 1e-6
-        Minimum lambda value to test
-    lambda_max : float, default 1e3
-        Maximum lambda value to test
-    n_lambda : int, default 50
-        Number of lambda values to test
+    lambda_bounds : tuple of float, default (1e-6, 1e6)
+        Lower and upper bounds of the search interval for lambda
         
     Returns
     -------
@@ -223,9 +217,9 @@ Use clear, concise comments for complex algorithms:
 ```python
 # Solve the penalized least squares system:
 # (B^T B + lambda * P^T P) alpha = B^T y
-A = self.basis_matrix.T @ self.basis_matrix + self.lambda_ * penalty_matrix
-b = self.basis_matrix.T @ self.y
-self.alpha = spsolve(A, b)
+A = self.B.T @ self.B + self.lambda_ * penalty_matrix
+b = self.B.T @ self.y
+self.coef = spsolve(A, b)
 ```
 
 ### Testing

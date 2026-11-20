@@ -1,4 +1,4 @@
-__version__ = "0.2.3"
+__version__ = "0.3.0"
 
 from .basis import b_spline_basis
 from .core import DerivConstraint, PSpline, ShapeConstraint, SlopeZeroConstraint
@@ -28,6 +28,7 @@ from .penalty import (
     variable_penalty_matrix,
 )
 from .utils import plot_derivatives, plot_fit
+from .utils_math import credible_band, pointwise_se
 from .whittaker import WhittakerSmoother
 
 __all__ = [
@@ -51,6 +52,9 @@ __all__ = [
     "v_curve",
     "variable_penalty_cv",
     "plot_diagnostics",
+    # Uncertainty helpers
+    "credible_band",
+    "pointwise_se",
     # Plotting
     "plot_fit",
     "plot_derivatives",

@@ -15,7 +15,7 @@ Based on Eilers & Marx (2021): Chapters 2, 3, and 8.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from numpy.typing import ArrayLike, NDArray
@@ -23,7 +23,6 @@ if TYPE_CHECKING:
 import numpy as np
 import scipy.sparse as sp
 from joblib import Parallel, delayed
-from scipy.interpolate import BSpline
 from scipy.sparse.linalg import spsolve
 
 from .basis import b_spline_basis, b_spline_derivative_basis
@@ -36,7 +35,7 @@ from .penalty import (
     difference_matrix,
     variable_penalty_matrix,
 )
-from .utils_math import solve_penalized
+from .utils_math import pointwise_se, solve_penalized
 
 __all__ = ["PSpline", "ShapeConstraint", "DerivConstraint", "SlopeZeroConstraint"]
 
@@ -63,16 +62,19 @@ class ShapeConstraint:
 class DerivConstraint:
     """
     Boundary derivative constraint: force the k-th derivative to zero
-    at the initial and/or final data point.
+    at the smallest and/or largest x.
+
+    The constraint is exact (solved with Lagrange multipliers), and the
+    analytic standard errors, ``ED`` and ``coef_covariance`` account for it.
 
     Parameters
     ----------
     order : int
         Order of the derivative to constrain (default 1 = slope).
     initial : float or None
-        If 0, forces the derivative to zero at the left boundary.
+        If 0, forces the derivative to zero at the smallest x.
     final : float or None
-        If 0, forces the derivative to zero at the right boundary.
+        If 0, forces the derivative to zero at the largest x.
     """
 
     order: int = 1
@@ -98,30 +100,6 @@ class SlopeZeroConstraint:
     domain: tuple[float, float]
     kappa: float = 1e8
     n_grid: int = 50
-
-
-_BAYES_INSTALL_MSG = (
-    "Bayesian methods require PyMC and ArviZ. "
-    "Install them with: pip install psplines[bayes]"
-)
-
-
-def _import_pymc() -> Any:
-    """Lazily import pymc, raising a clear error if not installed."""
-    try:
-        import pymc as pm
-    except ImportError:
-        raise ImportError(_BAYES_INSTALL_MSG) from None
-    return pm
-
-
-def _import_arviz() -> Any:
-    """Lazily import arviz, raising a clear error if not installed."""
-    try:
-        import arviz as az
-    except ImportError:
-        raise ImportError(_BAYES_INSTALL_MSG) from None
-    return az
 
 
 def _as1d(a: ArrayLike, dtype: type = float) -> NDArray:
@@ -197,11 +175,6 @@ class PSpline:
     deviance_: float | None = None
     phi_: float | None = None
     n_iter_: int | None = None
-
-    # Bayesian output
-    trace: Any = None
-    lambda_post: NDArray | None = None
-    _spline: BSpline | None = None
 
     _xl: float | None = None
     _xr: float | None = None
@@ -846,7 +819,6 @@ class PSpline:
             Method for computing uncertainty:
             - 'analytic': delta-method SE -> (fhat, se) or (mu_hat, lower, upper)
             - 'bootstrap': parametric bootstrap SEs -> (fhat, se)
-            - 'bayes': posterior mean + credible interval -> (mean, lower, upper)
         scale : str, default "response"
             Scale for predictions:
             - 'response': predictions on response scale (mu for Poisson, pi for Binomial)
@@ -859,7 +831,8 @@ class PSpline:
         n_jobs : int, default 1
             Number of parallel jobs (for bootstrap method).
         ci_prob : float, default 0.95
-            Probability for confidence/credible interval.
+            Probability of the response-scale interval returned for
+            non-Gaussian fits with ``return_se=True``.
 
         Returns
         -------
@@ -878,10 +851,6 @@ class PSpline:
 
         fam = self._family_obj
         assert fam is not None
-
-        # Bayesian credible band
-        if se_method == "bayes":
-            return self._bayes_predict(xq, deriv_order=None, ci_prob=ci_prob)
 
         # Bootstrap SEs
         if se_method == "bootstrap" and return_se:
@@ -928,7 +897,6 @@ class PSpline:
         n_boot: int = 5000,
         seed: int | None = None,
         n_jobs: int = 1,
-        ci_prob: float = 0.95,
     ) -> NDArray | tuple[NDArray, ...]:
         """
         Compute k-th derivative of the fitted spline.
@@ -945,15 +913,12 @@ class PSpline:
             Method for computing uncertainty:
             - 'analytic': delta-method SE -> (fhat, se)
             - 'bootstrap': parametric bootstrap SEs -> (fhat, se)
-            - 'bayes': posterior mean + credible interval -> (mean, lower, upper)
         n_boot : int, default 5000
             Number of bootstrap replicates (for bootstrap method).
         seed : int, optional
             Random seed (for bootstrap method).
         n_jobs : int, default 1
             Number of parallel jobs (for bootstrap method).
-        ci_prob : float, default 0.95
-            Probability for confidence/credible interval.
 
         Returns
         -------
@@ -966,14 +931,10 @@ class PSpline:
         xq = self._validate_query_points(x_new)
         if deriv_order <= 0:
             raise ValidationError(f"deriv_order must be positive (got {deriv_order})")
-        if se_method not in ("analytic", "bootstrap", "bayes"):
+        if se_method not in ("analytic", "bootstrap"):
             raise ValidationError(
-                f"se_method must be 'analytic', 'bootstrap', or 'bayes' (got '{se_method}')"
+                f"se_method must be 'analytic' or 'bootstrap' (got '{se_method}')"
             )
-
-        # Bayesian credible band
-        if se_method == "bayes":
-            return self._bayes_predict(xq, deriv_order=deriv_order, ci_prob=ci_prob)
 
         # Bootstrap SEs
         if se_method == "bootstrap" and return_se:
@@ -1002,6 +963,42 @@ class PSpline:
         se = self._compute_se(Bq)
         return fhat, se
 
+    @property
+    def coef_covariance(self) -> NDArray:
+        """
+        Covariance of the coefficients from the analytic fit (read-only).
+
+        ``phi_ * A^{-1}`` with ``A = B'WB + P`` and ``P`` the fit's total
+        penalty, on the link scale. This is the matrix behind the analytic
+        standard errors: for a basis (or derivative basis) ``Bq`` evaluated
+        with this fit's knots, ``pointwise_se(Bq, spline.coef_covariance)``
+        gives the same SEs as ``predict(..., return_se=True, scale="link")``
+        and ``derivative(..., return_se=True)``. Store it with ``coef`` to
+        recompute SEs later without refitting.
+
+        Each access returns a new array; changing it does not affect the
+        model.
+
+        With a ``deriv_constraint`` (``C alpha = 0``), ``A^{-1}`` is replaced
+        by ``A^{-1} - A^{-1} C' (C A^{-1} C')^{-1} C A^{-1}``, the operator of
+        the constrained solve: a derivative pinned to zero has zero standard
+        error, and ``ED`` and ``phi_`` use the same matrix. Shape, slope and
+        adaptive penalties are included through ``P``.
+
+        For intervals on nonlinear functionals of the curve (a peak, the time
+        of the peak), draw coefficients from ``N(coef, coef_covariance)`` and
+        evaluate the functional on each draw, or pass the draws to
+        :func:`credible_band` for a band.
+
+        Raises
+        ------
+        FittingError
+            If :meth:`fit` has not been called.
+        """
+        if self._Ainv is None or self.phi_ is None:
+            raise FittingError("Uncertainty not computed. Call fit() first.")
+        return self.phi_ * self._Ainv
+
     def _validate_query_points(self, x_new: ArrayLike) -> NDArray:
         """Validate and convert query points to 1-D array."""
         try:
@@ -1023,9 +1020,9 @@ class PSpline:
         ci_prob: float,
     ) -> None:
         """Validate prediction parameters."""
-        if se_method not in ("analytic", "bootstrap", "bayes"):
+        if se_method not in ("analytic", "bootstrap"):
             raise ValidationError(
-                f"se_method must be 'analytic', 'bootstrap', or 'bayes' (got '{se_method}')"
+                f"se_method must be 'analytic' or 'bootstrap' (got '{se_method}')"
             )
         if scale not in ("response", "link"):
             raise ValidationError(f"scale must be 'response' or 'link' (got '{scale}')")
@@ -1035,225 +1032,6 @@ class PSpline:
             raise ValidationError(f"n_jobs must be positive or -1 (got {n_jobs})")
         if not (0 < ci_prob < 1):
             raise ValidationError(f"ci_prob must be between 0 and 1 (got {ci_prob})")
-
-    def _bayes_predict(
-        self,
-        xq: NDArray,
-        *,
-        deriv_order: int | None = None,
-        ci_prob: float = 0.95,
-    ) -> tuple[NDArray, NDArray, NDArray]:
-        """
-        Bayesian posterior predictions or derivatives with credible intervals.
-        """
-        if self.trace is None:
-            raise FittingError("Call bayes_fit() first to sample the posterior.")
-        if self._spline is None:
-            raise FittingError("No BSpline stored. Run bayes_fit() first.")
-
-        if deriv_order is None:
-            Bq = self._spline(xq)
-        else:
-            Bq = self._spline(xq, nu=deriv_order)
-        Bq = Bq.toarray() if sp.issparse(Bq) else np.asarray(Bq)  # type: ignore[attr-defined]
-
-        # posterior alpha draws: shape (n_samples, n_basis)
-        alpha_draws = (
-            self.trace.posterior["alpha"].stack(sample=("chain", "draw")).values
-        )
-
-        # If it came transposed (basis x samples), swap axes
-        if alpha_draws.shape[0] == Bq.shape[1] and alpha_draws.shape[1] != Bq.shape[1]:
-            alpha_draws = alpha_draws.T
-
-        S, p = alpha_draws.shape
-        if p != Bq.shape[1]:
-            raise FittingError(
-                f"Mismatch: posterior alpha has length {p}, but basis has {Bq.shape[1]} cols"
-            )
-
-        draws = alpha_draws @ Bq.T
-        mean = draws.mean(axis=0)
-        lower = np.percentile(draws, (1 - ci_prob) / 2 * 100, axis=0)
-        upper = np.percentile(draws, (1 + ci_prob) / 2 * 100, axis=0)
-        return mean, lower, upper
-
-    def bayes_fit(
-        self,
-        a: float = 2.0,
-        b: float = 0.1,
-        c: float = 2.0,
-        d: float = 1.0,
-        draws: int = 2000,
-        tune: int = 2000,
-        chains: int = 4,
-        cores: int = 4,
-        target_accept: float = 0.9,
-        random_seed: int | None = None,
-        adaptive: bool = False,
-        nuts_sampler: str = "pymc",
-    ) -> Any:
-        """
-        Fit the P-spline model using Bayesian inference via PyMC.
-
-        Two modes are available:
-
-        **Standard (default, adaptive=False)** — implements the Bayesian
-        P-spline of Eilers & Marx §3.5 / Lang & Brezger (2003) with a
-        single penalty parameter:
-
-        .. math::
-
-            \\lambda \\sim \\text{Gamma}(a, b), \\quad
-            \\alpha \\mid \\lambda \\sim N(0, (\\lambda D'D + \\epsilon I)^{-1}), \\quad
-            \\sigma \\sim \\text{InverseGamma}(c, d)
-
-        **Adaptive (adaptive=True)** — uses one penalty parameter per row of
-        the difference matrix, allowing spatially varying smoothness
-        (similar to §8.8):
-
-        .. math::
-
-            \\lambda_j \\sim \\text{Gamma}(a, b), \\quad
-            \\alpha \\mid \\lambda \\sim N(0, (D' \\Lambda D + \\epsilon I)^{-1})
-
-        Requires the ``bayes`` optional dependencies: ``pip install psplines[bayes]``
-
-        Parameters
-        ----------
-        a : float, default 2.0
-            Shape parameter for the Gamma prior on penalty lambda(s).
-        b : float, default 0.1
-            Rate parameter for the Gamma prior on penalty lambda(s).
-        c : float, default 2.0
-            Shape parameter for the InverseGamma prior on sigma.
-        d : float, default 1.0
-            Scale parameter for the InverseGamma prior on sigma.
-        draws : int, default 2000
-            Number of MCMC posterior draws per chain.
-        tune : int, default 2000
-            Number of tuning (warmup) steps per chain.
-        chains : int, default 4
-            Number of MCMC chains.
-        cores : int, default 4
-            Number of CPU cores for parallel sampling.
-        target_accept : float, default 0.9
-            Target acceptance rate for the NUTS sampler.
-        random_seed : int, optional
-            Random seed for reproducibility.
-        adaptive : bool, default False
-            If False, use a single scalar penalty lambda (§3.5).
-            If True, use per-difference lambdas for spatially adaptive
-            smoothing (§8.8).
-        nuts_sampler : str, optional
-            NUTS sampler backend passed to ``pymc.sample()``.  ``"pymc"``
-            (default) uses the built-in PyTensor/C backend.  ``"nutpie"``
-            compiles the model once via numba and samples chains in parallel
-            threads, which is significantly faster for multi-chain runs.
-            Requires ``nutpie`` to be installed (``pip install psplines[nutpie]``).
-
-        Returns
-        -------
-        arviz.InferenceData
-            The posterior trace object.
-        """
-        pm = _import_pymc()
-        # Prepare basis and penalty
-        x_array = np.asarray(self.x)
-        self._xl = float(np.min(x_array)) if self._xl is None else self._xl
-        self._xr = float(np.max(x_array)) if self._xr is None else self._xr
-        B_sp, self.knots = b_spline_basis(
-            self.x, self._xl, self._xr, self.nseg, self.degree
-        )
-        B = B_sp.toarray() if sp.issparse(B_sp) else B_sp
-        nb = B.shape[1]
-        D = difference_matrix(nb, self.penalty_order).toarray()
-        DtD = D.T @ D
-        y = self.y
-        I_nb = np.eye(nb)
-
-        # store BSpline object for predict
-        coeffs = np.eye(nb)
-        self._spline = BSpline(self.knots, coeffs, self.degree, extrapolate=False)
-
-        with pm.Model():
-            if adaptive:
-                # Per-difference lambdas (spatially adaptive, §8.8)
-                lam = pm.Gamma("lam", alpha=a, beta=b, shape=D.shape[0])
-                Q = pm.math.dot(D.T * lam, D)
-            else:
-                # Single scalar lambda (standard Bayesian P-spline, §3.5)
-                lam = pm.Gamma("lam", alpha=a, beta=b)
-                Q = lam * DtD
-
-            Q_j = Q + I_nb * 1e-6
-            alpha = pm.MvNormal(
-                "alpha",
-                mu=pm.math.zeros(Q_j.shape[0]),
-                tau=Q_j,
-                shape=Q_j.shape[0],
-            )
-            sigma = pm.InverseGamma("sigma", alpha=c, beta=d)
-            mu = pm.Deterministic("mu", pm.math.dot(B, alpha))
-            pm.Normal("y_obs", mu=mu, sigma=sigma, observed=y)
-            trace = pm.sample(
-                draws=draws,
-                tune=tune,
-                chains=chains,
-                cores=cores,
-                target_accept=target_accept,
-                random_seed=random_seed,
-                nuts_sampler=nuts_sampler,
-            )
-
-        # Store results
-        self.trace = trace
-        self.coef = (
-            trace.posterior["alpha"]
-            .stack(sample=("chain", "draw"))
-            .mean(dim="sample")
-            .values
-        )
-        self.fitted_values = (
-            trace.posterior["mu"]
-            .stack(sample=("chain", "draw"))
-            .mean(dim="sample")
-            .values
-        )
-        self.lambda_post = (
-            trace.posterior["lam"]
-            .stack(sample=("chain", "draw"))
-            .mean(dim="sample")
-            .values
-        )
-        return trace
-
-    def plot_lam_trace(self, figsize: tuple[int, int] = (8, 6)) -> None:
-        """
-        Plot trace and marginal posterior for each lambda_j.
-        """
-        az = _import_arviz()
-        az.plot_trace(self.trace, var_names=["lam"], figsize=figsize)
-
-    def plot_alpha_trace(self, figsize: tuple[int, int] = (8, 6)) -> None:
-        """
-        Plot trace and marginal posterior for alpha coefficients.
-        """
-        az = _import_arviz()
-        az.plot_trace(self.trace, var_names=["alpha"], figsize=figsize)
-
-    def plot_posterior(self, figsize: tuple[int, int] = (8, 6)) -> None:
-        """
-        Plot posterior
-        """
-        az = _import_arviz()
-        az.plot_posterior(
-            self.trace,
-            var_names=["lam", "sigma"],
-            figsize=figsize,
-            hdi_prob=0.95,
-            point_estimate="mean",
-        )
 
     def _bootstrap_predict(
         self,
@@ -1319,16 +1097,18 @@ class PSpline:
         dc = self.deriv_constraint
         assert self._xl is not None and self._xr is not None
         x_arr = np.asarray(self.x)
+        # The smallest and largest x, not x[0] and x[-1]: x need not be sorted.
+        x_first, x_last = x_arr.min(), x_arr.max()
         rows = []
         order = dc.order
         if dc.initial == 0:
             B0, _ = b_spline_derivative_basis(
-                x_arr[0], self._xl, self._xr, self.nseg, self.degree, order, self.knots
+                x_first, self._xl, self._xr, self.nseg, self.degree, order, self.knots
             )
             rows.append(B0)
         if dc.final == 0:
             B1, _ = b_spline_derivative_basis(
-                x_arr[-1],
+                x_last,
                 self._xl,
                 self._xr,
                 self.nseg,
@@ -1360,12 +1140,7 @@ class PSpline:
 
         Based on Eilers & Marx (2021), eq. (2.16) and (2.27).
         """
-        if self._Ainv is None or self.phi_ is None:
-            raise FittingError("Uncertainty not computed. Call fit() first.")
-        Bq_dense = Bq.toarray() if sp.issparse(Bq) else np.asarray(Bq)  # type: ignore[union-attr]
-        V = (self.phi_ * self._Ainv) @ Bq_dense.T
-        var = np.einsum("ij,ji->i", Bq_dense, V)
-        return np.sqrt(np.maximum(var, 0.0))  # type: ignore[no-any-return]
+        return pointwise_se(Bq, self.coef_covariance)
 
     def _update_uncertainty(self) -> None:
         """
@@ -1395,6 +1170,16 @@ class PSpline:
         A_dense = A.toarray()
         BtB_dense: NDArray = BtB.toarray() if sp.issparse(BtB) else np.asarray(BtB)  # type: ignore[union-attr, attr-defined]
         invA = np.linalg.inv(A_dense)
+        if self._C is not None:
+            # deriv_constraint imposes C alpha = 0 exactly. The constrained
+            # solve is alpha = M B'Wz with
+            #   M = A^-1 - A^-1 C' (C A^-1 C')^-1 C A^-1,
+            # the covariance of N(., A^-1) conditioned on C alpha = 0, so M
+            # takes the place of A^-1 in ED, phi and every standard error.
+            C = self._C.toarray()  # type: ignore[attr-defined]
+            AiCt = invA @ C.T
+            invA = invA - AiCt @ np.linalg.solve(C @ AiCt, AiCt.T)
+            invA = 0.5 * (invA + invA.T)
         self.ED = float(np.trace(BtB_dense @ invA))
 
         if fam.is_gaussian:

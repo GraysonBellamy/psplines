@@ -17,7 +17,7 @@ This tutorial demonstrates all available methods for automatic λ selection.
 import numpy as np
 import matplotlib.pyplot as plt
 from psplines import PSpline
-from psplines.optimize import cross_validation, aic_selection, l_curve
+from psplines.optimize import cross_validation, aic, l_curve
 
 # Generate sample data
 np.random.seed(42)
@@ -46,6 +46,8 @@ plt.show()
 ## Cross-Validation (Recommended)
 
 Cross-validation is generally the most reliable method for parameter selection.
+The built-in `cross_validation` minimizes the generalized cross-validation (GCV)
+score, a closed-form approximation to leave-one-out CV, over `lambda_bounds`.
 
 ### Basic Cross-Validation
 
@@ -56,11 +58,7 @@ spline = PSpline(x, y, nseg=25)
 # Perform cross-validation
 optimal_lambda, cv_score = cross_validation(
     spline, 
-    lambda_min=1e-6, 
-    lambda_max=1e2,
-    n_lambda=50,
-    cv_method='kfold',
-    k_folds=5
+    lambda_bounds=(1e-6, 1e2),
 )
 
 print(f"Optimal λ (CV): {optimal_lambda:.6f}")
@@ -98,12 +96,12 @@ for lam in lambda_values:
     spline_temp = PSpline(x, y, nseg=25, lambda_=lam)
     spline_temp.fit()
     
-    # Compute CV score manually for demonstration
-    from sklearn.model_selection import KFold
-    kf = KFold(n_splits=5, shuffle=True, random_state=42)
+    # Compute 5-fold CV score manually for demonstration
+    folds = np.array_split(np.random.default_rng(42).permutation(len(x)), 5)
     cv_errors = []
     
-    for train_idx, test_idx in kf.split(x):
+    for test_idx in folds:
+        train_idx = np.setdiff1d(np.arange(len(x)), test_idx)
         x_train, x_test = x[train_idx], x[test_idx]
         y_train, y_test = y[train_idx], y[test_idx]
         
@@ -155,11 +153,9 @@ The Akaike Information Criterion balances model fit and complexity.
 ```python
 # AIC-based selection
 spline_aic = PSpline(x, y, nseg=25)
-optimal_lambda_aic, aic_score = aic_selection(
+optimal_lambda_aic, aic_score = aic(
     spline_aic,
-    lambda_min=1e-6,
-    lambda_max=1e2,
-    n_lambda=50
+    lambda_bounds=(1e-6, 1e2),
 )
 
 print(f"Optimal λ (AIC): {optimal_lambda_aic:.6f}")
@@ -182,8 +178,8 @@ for lam in lambda_values_aic:
     n = len(y)
     residuals = y - spline_temp.predict(x)
     mse = np.mean(residuals**2)
-    aic = n * np.log(mse) + 2 * spline_temp.ED
-    aic_scores.append(aic)
+    aic_value = n * np.log(mse) + 2 * spline_temp.ED
+    aic_scores.append(aic_value)
 
 min_aic_idx = np.argmin(aic_scores)
 optimal_lambda_aic_manual = lambda_values_aic[min_aic_idx]
@@ -205,13 +201,14 @@ plt.show()
 The L-curve method finds the corner in the trade-off between fit and smoothness.
 
 ```python
+from psplines import difference_matrix
+
 # L-curve selection
 spline_lcurve = PSpline(x, y, nseg=25)
 optimal_lambda_lcurve, curvature_info = l_curve(
     spline_lcurve,
-    lambda_min=1e-6,
-    lambda_max=1e2,
-    n_lambda=50
+    lambda_bounds=(1e-6, 1e2),
+    num_lambda=50
 )
 
 print(f"Optimal λ (L-curve): {optimal_lambda_lcurve:.6f}")
@@ -233,8 +230,9 @@ for lam in lambda_values_lc:
     residuals = y - spline_temp.predict(x)
     residual_norm = np.linalg.norm(residuals)
     
-    # Compute penalty norm
-    penalty_norm = np.linalg.norm(spline_temp.penalty_matrix @ spline_temp.alpha)
+    # Compute penalty norm ||D α||
+    D = difference_matrix(len(spline_temp.coef), spline_temp.penalty_order)
+    penalty_norm = np.linalg.norm(D @ spline_temp.coef)
     
     residual_norms.append(residual_norm)
     penalty_norms.append(penalty_norm)
@@ -291,7 +289,7 @@ GCV is an efficient approximation to leave-one-out cross-validation.
 ```python
 def gcv_score(spline):
     """Compute GCV score for fitted spline."""
-    n = spline.n
+    n = len(spline.y)
     residuals = spline.y - spline.predict(spline.x)
     rss = np.sum(residuals**2)
     
@@ -390,30 +388,18 @@ for method, lam in methods.items():
 
 ### Advanced Cross-Validation Options
 
-```python
-# Different CV methods
-cv_methods = ['kfold', 'loo']  # k-fold and leave-one-out
+`cross_validation` always scores with GCV; its only option is the search
+interval `lambda_bounds`. For k-fold CV, loop over the folds by hand as in
+[Understanding the CV Curve](#understanding-the-cv-curve).
 
-for cv_method in cv_methods:
-    if cv_method == 'kfold':
-        opt_lambda, score = cross_validation(
-            PSpline(x, y, nseg=25),
-            cv_method='kfold',
-            k_folds=10,  # More folds for better estimate
-            lambda_min=1e-6,
-            lambda_max=1e2,
-            n_lambda=30
-        )
-    else:  # Leave-one-out
-        opt_lambda, score = cross_validation(
-            PSpline(x, y, nseg=25),
-            cv_method='loo',
-            lambda_min=1e-6,
-            lambda_max=1e2,
-            n_lambda=30
-        )
-    
-    print(f"{cv_method.upper()} CV: λ = {opt_lambda:.6f}, score = {score:.6f}")
+```python
+# Different search intervals for λ
+for bounds in [(1e-6, 1e2), (1e-3, 1e3)]:
+    opt_lambda, score = cross_validation(
+        PSpline(x, y, nseg=25),
+        lambda_bounds=bounds,
+    )
+    print(f"bounds={bounds}: λ = {opt_lambda:.6f}, GCV score = {score:.6f}")
 ```
 
 ### Grid Search vs. Optimization
@@ -496,9 +482,9 @@ import time
 
 # Time different methods
 methods_to_time = [
-    ('Cross-Validation', lambda s: cross_validation(s, n_lambda=20)),
-    ('AIC', lambda s: aic_selection(s, n_lambda=20)),
-    ('L-Curve', lambda s: l_curve(s, n_lambda=20))
+    ('Cross-Validation', lambda s: cross_validation(s)),
+    ('AIC', lambda s: aic(s)),
+    ('L-Curve', lambda s: l_curve(s, num_lambda=20))
 ]
 
 print("=== Performance Comparison ===")

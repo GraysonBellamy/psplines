@@ -127,6 +127,7 @@ spline.fit()
 
 ```python
 import matplotlib.pyplot as plt
+from psplines.optimize import aic, cross_validation, l_curve, v_curve
 
 # Compare different methods
 methods = {
@@ -235,16 +236,19 @@ distribution of the penalty weight while $\lambda$ controls overall smoothness.
 
 ### Optimization Strategy
 
-All methods use:
-1. **Logarithmic search**: Test λ values on logarithmic grid
-2. **Golden section search**: Refine around the optimal region
+1. **`cross_validation` and `aic`**: bounded scalar minimization over $\log_{10}\lambda$
+   within `lambda_bounds` (`scipy.optimize.minimize_scalar(method="bounded")`)
+2. **`l_curve` and `v_curve`**: evaluation on a log-spaced grid of `num_lambda` values;
+   `l_curve` then refines on a finer grid around the corner (`refine=True`)
 3. **Sparse linear algebra**: Efficient computation of smoothing matrices
+
+Every selector sets `pspline.lambda_` to the selected value and refits the model
+before returning `(lambda, score)`.
 
 ### Default Parameter Ranges
 
 - **λ range**: $10^{-6}$ to $10^6$ (12 orders of magnitude)
-- **Grid points**: 50 logarithmically spaced values
-- **Refinement**: Golden section search with tolerance $10^{-6}$
+- **Grid points** (`l_curve`, `v_curve`): 81 logarithmically spaced values
 
 ### Performance Considerations
 

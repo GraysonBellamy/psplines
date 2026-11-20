@@ -3,12 +3,12 @@
 [![Python Version](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-**PSplines** is a high-performance Python library for univariate penalized B-spline (P-spline) smoothing, implementing the methods described in Eilers & Marx (2021). It provides efficient sparse-matrix implementations with analytical uncertainty quantification, parametric bootstrap, and Bayesian inference capabilities.
+**PSplines** is a high-performance Python library for univariate penalized B-spline (P-spline) smoothing, implementing the methods described in Eilers & Marx (2021). It provides efficient sparse-matrix implementations with analytical uncertainty quantification and a parametric bootstrap.
 
 ## Key Features
 
 - **Fast Sparse Implementation**: Uses SciPy sparse matrices and optimized solvers
-- **Multiple Uncertainty Methods**: Analytical (delta method), bootstrap, and Bayesian approaches  
+- **Multiple Uncertainty Methods**: Analytical (delta method) and bootstrap approaches
 - **Flexible Configuration**: Customizable basis functions, penalty orders, and constraints
 - **Derivative Computation**: Efficient computation of spline derivatives with uncertainty
 - **Automatic Parameter Selection**: Cross-validation, AIC, L-curve, and V-curve methods
@@ -80,7 +80,7 @@ spline = PSpline(
     degree=3,             # B-spline degree
     lambda_=10.0,         # Smoothing parameter
     penalty_order=2,      # Order of difference penalty
-    constraints=None      # Boundary constraints (dict)
+    deriv_constraint=None # Boundary derivative constraint (DerivConstraint)
 )
 ```
 
@@ -116,18 +116,6 @@ dy_dx = spline.derivative(x_new, deriv_order=1)
 d2y_dx2, se = spline.derivative(x_new, deriv_order=2, return_se=True)
 ```
 
-#### Bayesian Inference
-```python
-# Standard Bayesian P-spline (single λ, §3.5)
-trace = spline.bayes_fit(draws=2000, tune=1000)
-
-# Adaptive Bayesian P-spline (per-difference λ_j, §8.8)
-trace = spline.bayes_fit(draws=2000, tune=1000, adaptive=True)
-
-# Get posterior credible intervals (works with either mode)
-mean, lower, upper = spline.predict(x_new, se_method="bayes", hdi_prob=0.95)
-```
-
 ## Parameter Selection
 
 PSplines provides several methods for automatic smoothing parameter selection:
@@ -156,16 +144,12 @@ spline.fit()
 Enforce derivative constraints at boundaries:
 
 ```python
-# Zero first derivative at boundaries (natural spline)
-constraints = {
-    "deriv": {
-        "order": 1,
-        "initial": 0,
-        "final": 0
-    }
-}
+from psplines import DerivConstraint
 
-spline = PSpline(x, y, constraints=constraints)
+# Zero first derivative at the smallest and largest x
+spline = PSpline(
+    x, y, deriv_constraint=DerivConstraint(order=1, initial=0, final=0)
+)
 spline.fit()
 ```
 
@@ -221,12 +205,9 @@ The library implements efficient algorithms for:
 ## Requirements
 
 - Python >= 3.10
-- NumPy >= 1.21
-- SciPy >= 1.7
-- PyMC >= 5.0 (for Bayesian methods)
+- NumPy >= 1.24
+- SciPy >= 1.9
 - Matplotlib >= 3.4 (for plotting utilities)
-- PyTensor >= 2.0 (for Bayesian methods)
-- ArviZ >= 0.12 (for Bayesian diagnostics)
 - Joblib >= 1.0 (for parallel processing)
 
 ## Examples
@@ -286,6 +267,39 @@ If you use PSplines in your research, please cite:
 - de Boor, C. (2001). *A Practical Guide to Splines*. Springer-Verlag.
 
 ## Changelog
+
+### Version 0.3.0
+- **Removed: the Bayesian fit.** `PSpline.bayes_fit`, `posterior_draws`,
+  the `trace` and `lambda_post` attributes, `plot_lam_trace`,
+  `plot_alpha_trace`, `plot_posterior`, `se_method="bayes"` in `predict` and
+  `derivative`, `derivative(ci_prob=...)` (it only served the Bayesian band)
+  and the `bayes` and `nutpie` extras. PyMC, ArviZ and nutpie are no longer
+  dependencies of any kind. On real data the analytic band matched the
+  Bayesian band once both used the same smoothing parameter, so sampling
+  bought little for its cost. For intervals on nonlinear quantities (a peak,
+  the time of the peak), sample coefficients from
+  `N(coef, coef_covariance)`.
+- New: the read-only `PSpline.coef_covariance` (`phi_ * A^-1`, the matrix
+  behind the analytic SEs) and two array-level helpers.
+  `pointwise_se(Bq, cov)` gives the SEs of `Bq @ alpha`, so
+  `pointwise_se(Bq, spline.coef_covariance)` reproduces the analytic SEs
+  from stored arrays. `credible_band(Bq, coef_draws, ci_prob, chunk_size)`
+  gives the mean and equal-tailed band of `Bq @ alpha` over coefficient
+  draws (sampled from `N(coef, coef_covariance)`, or stored from an earlier
+  Bayesian fit), evaluated in blocks of query points to bound memory.
+- Fixed: with `deriv_constraint`, the analytic SEs, `ED`, `phi_` and the
+  coefficient covariance ignored the constraint, so a derivative pinned to
+  zero still had a sizeable SE. They now use the covariance conditioned on
+  the constraint. Unconstrained fits are unchanged.
+- Fixed: `deriv_constraint` was applied at `x[0]` and `x[-1]`; it is now
+  applied at the smallest and largest x, so unsorted input works. Sorted
+  input is unchanged.
+- Docs and examples: fixed calls to arguments and functions that do not exist
+  (`hdi_prob`, `bayes_samples`, `constraints=`, `aic_selection`,
+  `lambda_min`/`lambda_max`/`n_lambda`, `cv_method`/`k_folds`,
+  `density_estimate(domain=)`, `psplines[full]`, among others) and wrong
+  return-value unpacking. A new test checks the keyword arguments of every
+  code block in the README, docs and examples against the real signatures.
 
 ### Version 0.1.3
 - Fixed dead code bug in derivative method

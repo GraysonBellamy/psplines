@@ -148,6 +148,8 @@ $$\text{Cov}(\hat{\alpha}) = \sigma^2 (B^T B + \lambda D_p^T D_p)^{-1} B^T B (B^
 For predictions $f(x_0) = b(x_0)^T \hat{\alpha}$ where $b(x_0)$ is the basis vector at $x_0$:
 $$\text{Var}(f(x_0)) = \sigma^2 b(x_0)^T (B^T B + \lambda D_p^T D_p)^{-1} b(x_0)$$
 
+psplines uses this covariance, $\sigma^2 (B^T B + \lambda D_p^T D_p)^{-1}$ (`coef_covariance`), rather than the sandwich form above. It is the Bayesian posterior covariance of $\alpha$ with $\lambda$ and $\sigma^2$ fixed (Wahba, 1983; Silverman, 1985; Nychka, 1988; Eilers & Marx, 2021, eq. 2.16), so the analytic band is also the posterior band of the curve.
+
 #### Bootstrap Methods
 
 Parametric bootstrap generates replicates:
@@ -196,47 +198,6 @@ Plots $\log(\|D_p \hat{\alpha}\|^2)$ vs $\log(\|y - B\hat{\alpha}\|^2)$ and sele
 $$\kappa(\lambda) = \frac{2(\rho' \eta'' - \rho'' \eta')}{(\rho'^2 + \eta'^2)^{3/2}}$$
 
 where $\rho(\lambda) = \log(\|y - B\hat{\alpha}\|^2)$ and $\eta(\lambda) = \log(\|D_p \hat{\alpha}\|^2)$.
-
-## Bayesian P-Splines
-
-The `bayes_fit()` method offers two modes controlled by the `adaptive` parameter.
-
-### Standard Model (adaptive=False, default)
-
-This implements the Bayesian P-spline of §3.5 (Eilers & Marx 2021; Lang & Brezger 2003) with a **single** penalty parameter:
-
-$$y \mid \alpha, \sigma \sim N(B\alpha, \sigma^2 I)$$
-$$\alpha \mid \lambda \sim N\!\bigl(0,\; (\lambda D_p^T D_p + \epsilon I)^{-1}\bigr)$$
-$$\lambda \sim \text{Gamma}(a, b)$$
-$$\sigma \sim \text{InverseGamma}(c, d)$$
-
-where $\epsilon = 10^{-6}$ is a small jitter for numerical stability (since $D_p^T D_p$ is rank-deficient with a null space of dimension $p$).
-
-### Posterior Distribution
-
-The posterior for $\alpha$ is:
-$$\alpha \mid y, \lambda, \sigma^2 \sim N(\mu_\alpha, \Sigma_\alpha)$$
-
-where:
-$$\Sigma_\alpha = (B^T B / \sigma^2 + \lambda D_p^T D_p + \epsilon I)^{-1}$$
-$$\mu_\alpha = \Sigma_\alpha B^T y / \sigma^2$$
-
-### Adaptive Model (adaptive=True)
-
-This uses **per-difference** penalty parameters for spatially varying smoothness (related to §8.8):
-
-$$\lambda_j \sim \text{Gamma}(a, b), \quad j = 1, \ldots, m-p$$
-$$\alpha \mid \lambda \sim N\!\bigl(0,\; (D_p^T \Lambda D_p + \epsilon I)^{-1}\bigr)$$
-
-where $\Lambda = \text{diag}(\lambda_1, \ldots, \lambda_{m-p})$. Each $\lambda_j$ controls the penalty on the $j$-th difference, allowing different regions of the curve to have different amounts of smoothness.
-
-### Markov Chain Monte Carlo
-
-Both modes use PyMC's NUTS sampler (Hamiltonian Monte Carlo) to draw from the joint posterior. The posterior mean of $\alpha$ gives the point estimate, and posterior quantiles provide credible intervals.
-
-### Prior Sensitivity
-
-The book (§3.5) notes that Lang & Brezger's inverse-Gamma priors for variances can favor over-smoothing depending on hyperparameter choices (Jullion & Lambert, 2007). The default priors $\text{Gamma}(2, 0.1)$ for $\lambda$ and $\text{InverseGamma}(2, 1)$ for $\sigma$ are moderately informative. Users should consider adjusting these for their specific application.
 
 ## Extensions and Variants
 
@@ -393,6 +354,12 @@ specifying the form of the weight function.
 
 3. Eilers, P. H. C., & Marx, B. D. (2021). *Practical Smoothing: The Joys of P-splines*. Cambridge University Press.
 
-4. Ruppert, D., Wand, M. P., & Carroll, R. J. (2003). *Semiparametric Regression*. Cambridge University Press.
+4. Nychka, D. (1988). Bayesian confidence intervals for smoothing splines. *Journal of the American Statistical Association*, 83(404), 1134-1143.
 
-5. Wood, S. N. (2017). *Generalized Additive Models: An Introduction with R*. Chapman and Hall/CRC.
+5. Ruppert, D., Wand, M. P., & Carroll, R. J. (2003). *Semiparametric Regression*. Cambridge University Press.
+
+6. Silverman, B. W. (1985). Some aspects of the spline smoothing approach to non-parametric regression curve fitting. *Journal of the Royal Statistical Society, Series B*, 47(1), 1-52.
+
+7. Wahba, G. (1983). Bayesian "confidence intervals" for the cross-validated smoothing spline. *Journal of the Royal Statistical Society, Series B*, 45(1), 133-150.
+
+8. Wood, S. N. (2017). *Generalized Additive Models: An Introduction with R*. Chapman and Hall/CRC.

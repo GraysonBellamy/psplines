@@ -27,16 +27,6 @@ dependencies = [
     "joblib>=1.0",
 ]
 
-[project.optional-dependencies]
-bayes = [
-    "pymc>=5.0",
-    "arviz>=0.12",
-]
-nutpie = [
-    "pymc>=5.0",
-    "nutpie>=0.13",
-]
-
 [project.urls]
 Homepage = "https://github.com/graysonbellamy/psplines"
 Repository = "https://github.com/graysonbellamy/psplines"
@@ -87,10 +77,6 @@ show_error_codes = true
 
 [[tool.mypy.overrides]]
 module = [
-    "pymc",
-    "pymc.*",
-    "arviz",
-    "arviz.*",
     "joblib",
     "joblib.*"
 ]

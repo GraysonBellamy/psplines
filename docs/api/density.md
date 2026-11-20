@@ -52,7 +52,8 @@ data = np.concatenate([
 result = density_estimate(data, bins=100, penalty_order=3)
 
 # result.density integrates to ~1
-print(f"Integral: {np.trapz(result.density, result.grid):.4f}")
+from scipy.integrate import trapezoid
+print(f"Integral: {trapezoid(result.density, result.grid):.4f}")
 ```
 
 ### Fixed Smoothing Parameter
@@ -66,7 +67,7 @@ result = density_estimate(data, bins=80, lambda_=10.0)
 
 ```python
 # Restrict estimation to a specific range
-result = density_estimate(data, bins=100, domain=(-5, 5))
+result = density_estimate(data, bins=100, xl=-5, xr=5)
 ```
 
 ## Method

@@ -8,17 +8,9 @@ PSplines requires Python 3.10 or later and depends on several scientific computi
 
 ### Core Dependencies
 
-- **NumPy** (≥ 1.21): Array operations and linear algebra
-- **SciPy** (≥ 1.7): Sparse matrices, optimization, and spline functions
+- **NumPy** (≥ 1.24): Array operations and linear algebra
+- **SciPy** (≥ 1.9): Sparse matrices, optimization, and spline functions
 - **Matplotlib** (≥ 3.4): Basic plotting functionality
-
-### Optional Dependencies
-
-For full functionality, you may want:
-
-- **PyMC** (≥ 5.0): Bayesian inference capabilities
-- **PyTensor** (≥ 2.0): Backend for PyMC
-- **ArviZ** (≥ 0.12): Bayesian diagnostics and visualization
 - **Joblib** (≥ 1.0): Parallel processing for bootstrap methods
 
 ## Installation Methods
@@ -32,21 +24,6 @@ pip install psplines
 ```
 
 This installs PSplines and all required dependencies.
-
-#### Install with Optional Dependencies
-
-To install with all optional dependencies for full functionality:
-
-```bash
-pip install psplines[full]
-```
-
-Or install specific optional dependencies:
-
-```bash
-pip install psplines[bayesian]  # For Bayesian features
-pip install psplines[parallel]  # For parallel processing
-```
 
 ### Method 2: Using conda/mamba
 
@@ -77,7 +54,7 @@ For development with all tools:
 ```bash
 git clone https://github.com/graysonbellamy/psplines.git
 cd psplines
-pip install -e .[dev]
+pip install -e . --group dev  # needs pip >= 25.1
 ```
 
 ### Method 4: Using uv (Fast and Modern)
@@ -122,24 +99,7 @@ print(f"  - Effective DoF: {spline.ED:.2f}")
 print(f"  - Residual variance: {spline.phi_:.4f}")
 ```
 
-## Testing Optional Features
-
-### Bayesian Functionality
-
-```python
-try:
-    import pymc
-    import arviz
-    print("✓ Bayesian features available")
-    
-    # Test Bayesian fitting (this may take a moment)
-    trace = spline.bayes_fit(draws=100, tune=100, chains=1)
-    print("✓ Bayesian inference working")
-except ImportError as e:
-    print(f"✗ Bayesian features not available: {e}")
-```
-
-### Parallel Processing
+## Testing Parallel Processing
 
 ```python
 try:
@@ -183,7 +143,7 @@ Create a Dockerfile for containerized usage:
 FROM python:3.11-slim
 
 # Install system dependencies
-RUN apt-update && apt-get install -y gcc g++ && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y gcc g++ && rm -rf /var/lib/apt/lists/*
 
 # Install Python packages
 RUN pip install psplines matplotlib jupyter
@@ -232,14 +192,6 @@ python -c "import psplines; print('OK')"
 
 ```bash
 pip install --upgrade numpy scipy
-```
-
-#### Issue: Bayesian features not working
-
-**Solution**: Install PyMC and its dependencies:
-
-```bash
-pip install pymc arviz pytensor
 ```
 
 #### Issue: Slow performance

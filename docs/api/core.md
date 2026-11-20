@@ -11,12 +11,28 @@ The core module contains the main `PSpline` class that implements penalized B-sp
         - fit
         - predict
         - derivative
-        - bayes_fit
-        - plot_lam_trace
-        - plot_alpha_trace
-        - plot_posterior
+        - coef_covariance
       show_source: true
       show_bases: false
+      heading_level: 3
+
+## Uncertainty Helpers
+
+Array-level functions for uncertainty bands. `pointwise_se` computes the
+analytic standard errors from a coefficient covariance; `credible_band`
+summarises `Bq @ alpha` over coefficient draws (one draw per row), such as
+draws from `N(coef, coef_covariance)` or draws saved from an earlier Bayesian
+fit. They take a basis matrix evaluated at query points, so they also work on
+stored coefficients without the fitted `PSpline`.
+
+::: psplines.utils_math.pointwise_se
+    options:
+      show_source: true
+      heading_level: 3
+
+::: psplines.utils_math.credible_band
+    options:
+      show_source: true
       heading_level: 3
 
 ## Usage Examples
@@ -49,6 +65,34 @@ y_pred, se = spline.predict(x_new, return_se=True)
 # Bootstrap confidence intervals
 y_pred, se_boot = spline.predict(x_new, return_se=True,
                                 se_method="bootstrap", n_boot=1000)
+```
+
+```python
+from psplines import b_spline_basis, pointwise_se
+
+# Recompute the analytic SEs later from stored arrays, without refitting
+coef, cov = spline.coef, spline.coef_covariance  # phi * (B'WB + P)^-1
+Bq, _ = b_spline_basis(x_new, spline._xl, spline._xr, spline.nseg, spline.degree)
+se_again = pointwise_se(Bq, cov)  # identical to `se` above
+```
+
+The analytic band is also the Bayesian posterior band of the curve with
+$\lambda$ fixed, so draws from `N(coef, coef_covariance)` give intervals for
+nonlinear quantities derived from the curve, such as the location of its peak:
+
+```python
+from psplines import credible_band
+
+rng = np.random.default_rng(0)
+alpha_draws = rng.multivariate_normal(spline.coef, spline.coef_covariance, size=4000)
+
+# Mean and equal-tailed 95% band of the curve (close to y_pred +/- 1.96 * se)
+mean, lower, upper = credible_band(Bq, alpha_draws, ci_prob=0.95)
+
+# 95% interval for the x at which the curve peaks
+curves = (Bq @ alpha_draws.T).T  # (n_draws, len(x_new))
+x_peak = x_new[np.argmax(curves, axis=1)]
+peak_lo, peak_hi = np.percentile(x_peak, [2.5, 97.5])
 ```
 
 ### Derivative Computation
@@ -193,19 +237,6 @@ result = density_estimate(raw_data, bins=100, penalty_order=3)
 # result.pspline is the underlying fitted PSpline
 ```
 
-### Bayesian Inference
-
-```python
-# Standard Bayesian P-spline (single λ, §3.5 of Eilers & Marx 2021)
-trace = spline.bayes_fit(draws=2000, tune=1000)
-
-# Adaptive Bayesian P-spline (per-difference λ_j, §8.8)
-trace = spline.bayes_fit(draws=2000, tune=1000, adaptive=True)
-
-# Get posterior credible intervals (works with either mode)
-mean, lower, upper = spline.predict(x_new, se_method="bayes")
-```
-
 ## Model Parameters
 
 ### Basis Function Parameters
@@ -243,9 +274,9 @@ mean, lower, upper = spline.predict(x_new, se_method="bayes")
 
 ### Constraint Parameters
 
-- **`constraints`**: Dictionary specifying boundary constraints
-    - `"deriv"`: Derivative constraints at boundaries
-    - Example: `{"deriv": {"order": 1, "initial": 0, "final": 0}}`
+- **`deriv_constraint`**: Boundary derivative constraint (`DerivConstraint`)
+    - Pins the k-th derivative to zero at the smallest and/or largest x
+    - Example: `deriv_constraint=DerivConstraint(order=1, initial=0, final=0)`
 
 - **`slope_zero`**: Enforce flat slope in a subdomain
     - Example: `slope_zero=SlopeZeroConstraint(domain=(2.0, 4.0))`
@@ -291,9 +322,14 @@ After fitting, the following attributes are available:
 - **`fitted_values`**: Fitted values at input points
 - **`knots`**: Knot vector used for B-splines
 - **`ED`**: Effective degrees of freedom
-- **`phi_`**: Residual variance estimate
+- **`phi_`**: Dispersion: the residual variance for Gaussian fits, the
+  family's dispersion (1 for Poisson and Binomial) otherwise
 - **`se_coef`**: Standard errors of coefficients
 - **`se_fitted`**: Standard errors of fitted values
+- **`coef_covariance`**: Coefficient covariance $\phi A^{-1}$ (read-only;
+  `pointwise_se(Bq, coef_covariance)` reproduces the analytic SEs). With a
+  `deriv_constraint`, $A^{-1}$ is replaced by its restriction to the
+  constraint, so a pinned derivative has zero SE.
 
 ## Error Handling
 
