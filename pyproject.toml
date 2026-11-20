@@ -39,6 +39,18 @@ build-backend = "hatchling.build"
 [tool.hatch.version]
 path = "src/psplines/__init__.py"
 
+# An allowlist, so local files (editor and agent settings, notes) never ship.
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/tests",
+    "/docs",
+    "/examples",
+    "/README.md",
+    "/LICENSE",
+    "/pyproject.toml",
+]
+
 [dependency-groups]
 dev = [
     "zensical>=0.0.46",
