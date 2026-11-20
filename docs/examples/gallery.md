@@ -64,7 +64,7 @@ python examples/01_basic_usage.py
 Demonstrates various methods for automatic parameter selection including cross-validation, AIC, and L-curve methods.
 
 ```python
-from psplines.optimize import cross_validation, aic_selection, l_curve
+from psplines.optimize import cross_validation, aic, l_curve
 
 # Automatic lambda selection using cross-validation
 spline = PSpline(x, y, nseg=20)
@@ -93,7 +93,7 @@ python examples/02_parameter_selection.py
 ### Example 3: Uncertainty Quantification
 **File**: `03_uncertainty_methods.py`
 
-Comprehensive demonstration of uncertainty quantification methods including analytical standard errors, bootstrap methods, and Bayesian inference.
+Comprehensive demonstration of uncertainty quantification methods: analytical standard errors and the parametric bootstrap.
 
 ```python
 # Get predictions with uncertainty estimates
@@ -112,7 +112,6 @@ plt.fill_between(x_new, lower_band, upper_band, alpha=0.3, label='95% CI')
 **Key Features Demonstrated**:
 - Analytical standard errors
 - Bootstrap uncertainty quantification
-- Bayesian inference (when PyMC available)
 - Confidence vs prediction intervals
 - Method comparison and validation
 
@@ -189,7 +188,7 @@ def fit_experimental_data(x_data, y_data, derivative_at_zero=None):
     spline = PSpline(x_data, y_data, nseg=25)
     
     # Optimize smoothing parameter
-    optimal_lambda, _ = cross_validation(spline, cv_method='kfold', k_folds=10)
+    optimal_lambda, _ = cross_validation(spline)
     spline.lambda_ = optimal_lambda
     spline.fit()
     
@@ -260,6 +259,8 @@ def analyze_stock_prices(dates, prices, return_components=False):
     return trend, residuals
 
 # Example usage
+import pandas as pd
+
 dates = pd.date_range('2020-01-01', '2023-12-31', freq='D')
 # Simulate stock prices (in practice, load real data)
 log_returns = 0.0008 + 0.02 * np.random.randn(len(dates))
@@ -306,7 +307,7 @@ def analyze_growth_curves(time_points, measurements, subject_ids=None):
             
             if len(t_subj) > 5:  # Minimum points for fitting
                 spline = PSpline(t_subj, y_subj, nseg=min(15, len(t_subj)//3))
-                optimal_lambda, _ = cross_validation(spline, n_lambda=20)
+                optimal_lambda, _ = cross_validation(spline)
                 spline.lambda_ = optimal_lambda
                 spline.fit()
                 
@@ -408,7 +409,7 @@ def parallel_bootstrap_uncertainty(spline, x_eval, n_boot=1000, n_jobs=-1):
     
     def bootstrap_sample(i):
         # Generate bootstrap sample
-        n = spline.n
+        n = len(spline.x)
         bootstrap_y = (spline.predict(spline.x) + 
                       np.sqrt(spline.phi_) * np.random.randn(n))
         
@@ -470,7 +471,7 @@ def comprehensive_diagnostics(spline, x_data, y_data):
         'mae': np.mean(np.abs(residuals)),
         'r_squared': 1 - np.var(residuals) / np.var(y_data),
         'effective_dof': spline.ED,
-        'aic': spline.n * np.log(np.mean(residuals**2)) + 2 * spline.ED,
+        'aic': len(y_data) * np.log(np.mean(residuals**2)) + 2 * spline.ED,
         'residual_autocorr': np.corrcoef(residuals[:-1], residuals[1:])[0, 1]
     }
     
@@ -563,9 +564,9 @@ def validate_model(spline, x_data, y_data, plot=True):
 ## 📚 Running the Examples
 
 ### Prerequisites
-Make sure you have PSplines installed with all dependencies:
+Make sure you have PSplines installed:
 ```bash
-pip install psplines[full]
+pip install psplines
 ```
 
 Or for development:
@@ -603,7 +604,7 @@ Based on these examples, here are key best practices:
 ### 1. Parameter Selection
 - **Default**: Use cross-validation for robust parameter selection
 - **Fast prototyping**: Start with `lambda_=1.0` and `nseg=20`
-- **Large datasets**: Use AIC or reduce `n_lambda` in CV for speed
+- **Large datasets**: Use AIC or fewer segments (`nseg`) for speed
 - **Critical applications**: Compare multiple methods (CV, AIC, L-curve)
 
 ### 2. Model Validation

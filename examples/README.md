@@ -4,17 +4,17 @@ This directory contains comprehensive examples demonstrating the capabilities of
 
 ## Running the Examples
 
-Each example is a standalone Python script that can be run independently:
+Each example is a standalone Python script that can be run independently.
+Run them from the project root (the plots are saved under `examples/`):
 
 ```bash
-cd examples
-python 01_basic_usage.py
-python 02_parameter_selection.py
-python 03_uncertainty_methods.py
-python 04_real_world_application.py
+python examples/01_basic_usage.py
+python examples/02_parameter_selection.py
+python examples/03_uncertainty_methods.py
+python examples/04_real_world_application.py
 ```
 
-Or using uv from the project root:
+Or using uv:
 
 ```bash
 uv run python examples/01_basic_usage.py
@@ -52,7 +52,6 @@ uv run python examples/01_basic_usage.py
 **Demonstrates:** Different uncertainty quantification approaches
 - Analytical standard errors (delta method)
 - Parametric bootstrap confidence intervals
-- Bayesian credible intervals
 - Coverage analysis
 
 **Topics Covered:**
@@ -86,7 +85,7 @@ All examples use synthetically generated data to ensure reproducibility and to h
 
 ## Output Files
 
-Each example generates visualization plots saved as PNG files:
+Each example generates visualization plots saved as PNG files in `examples/`:
 - `basic_usage_output.png`
 - `parameter_selection_output.png` 
 - `uncertainty_methods_output.png`
@@ -101,7 +100,7 @@ All examples require the same dependencies as the main PSplines package. Example
 ## Notes
 
 - Examples are designed to be educational and may include simplified approaches for clarity
-- Computational times may vary; Bayesian examples (Example 3) can take 30-60 seconds
+- Computational times may vary; the bootstrap in Example 3 takes a few seconds
 - All examples include comprehensive comments explaining the methodology
 - Error handling demonstrates input validation features
 

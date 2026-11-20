@@ -4,7 +4,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![PyPI version](https://badge.fury.io/py/psplines.svg)](https://badge.fury.io/py/psplines)
 
-**PSplines** is a high-performance Python library for univariate penalized B-spline (P-spline) smoothing, implementing the methods described in Eilers & Marx (2021). It provides efficient sparse-matrix implementations with analytical uncertainty quantification, parametric bootstrap, and Bayesian inference capabilities.
+**PSplines** is a high-performance Python library for univariate penalized B-spline (P-spline) smoothing, implementing the methods described in Eilers & Marx (2021). It provides efficient sparse-matrix implementations with analytical uncertainty quantification and a parametric bootstrap.
 
 ## Key Features
 
@@ -14,7 +14,7 @@
 - **Density Estimation**: Smooth density estimation from raw data via Poisson P-splines
 - **Shape Constraints**: Monotonicity, convexity, concavity, and non-negativity enforcement via asymmetric penalties (§8.7), with optional selective domain constraints
 - **Adaptive & Variable Penalties**: Exponential variable weights and nonparametric adaptive per-difference weights for spatially varying smoothness (§8.8)
-- **Multiple Uncertainty Methods**: Analytical (delta method), bootstrap, and Bayesian approaches
+- **Multiple Uncertainty Methods**: Analytical (delta method) and bootstrap approaches
 - **Flexible Configuration**: Customizable basis functions, penalty orders, and constraints
 - **Derivative Computation**: Efficient computation of spline derivatives with uncertainty
 - **Automatic Parameter Selection**: Cross-validation, AIC, L-curve, V-curve, and 2-D variable-penalty search for Gaussian and GLM models

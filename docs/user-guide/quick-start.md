@@ -10,11 +10,6 @@ Install PSplines using pip:
 pip install psplines
 ```
 
-For all features including Bayesian inference:
-```bash
-pip install psplines[full]
-```
-
 ## 5-Minute Example
 
 Here's a complete example that demonstrates the core PSplines workflow:
@@ -88,13 +83,13 @@ The result: automatic smoothing that adapts to your data.
 Don't guess parameters - let the data decide:
 
 ```python
-from psplines.optimize import cross_validation, aic_selection
+from psplines.optimize import cross_validation, aic
 
 # Cross-validation (recommended)
 optimal_lambda, cv_score = cross_validation(spline)
 
 # AIC (faster alternative)
-optimal_lambda, aic_score = aic_selection(spline)
+optimal_lambda, aic_score = aic(spline)
 ```
 
 ## Common Use Cases
@@ -185,6 +180,7 @@ best_lambda, score = ws.cross_validation()
 
 # Works with non-uniform spacing (uses divided differences automatically)
 x_irregular = np.sort(np.random.uniform(0, 10, 100))
+y_irregular = np.sin(x_irregular) + 0.1 * np.random.randn(100)
 ws = WhittakerSmoother(x_irregular, y_irregular, lambda_=100).fit()
 ```
 
@@ -217,10 +213,12 @@ ws = WhittakerSmoother(x_irregular, y_irregular, lambda_=100).fit()
 PSplines automatically validates inputs:
 
 ```python
+from psplines import ValidationError
+
 try:
     spline = PSpline(x, y, nseg=20)
     spline.fit()
-except ValueError as e:
+except ValidationError as e:
     print(f"Input error: {e}")
 ```
 

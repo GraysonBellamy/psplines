@@ -18,7 +18,7 @@ Beyond basic smoothing, PSplines offers sophisticated features for specialized a
 ```python
 import numpy as np
 import matplotlib.pyplot as plt
-from psplines import PSpline, ShapeConstraint, SlopeZeroConstraint, BSplineBasis, build_penalty_matrix
+from psplines import PSpline, ShapeConstraint, SlopeZeroConstraint, DerivConstraint, difference_matrix
 from psplines.optimize import cross_validation, l_curve
 import scipy.sparse as sp
 from scipy.interpolate import UnivariateSpline
@@ -57,30 +57,14 @@ optimal_lambda, _ = cross_validation(spline_unconstrained)
 spline_unconstrained.lambda_ = optimal_lambda
 spline_unconstrained.fit()
 
-# Constrained fit with derivative constraints
-# Note: This is a conceptual example - full constraint implementation 
-# would require extending the PSpline class
-def fit_with_constraints(x_data, y_data, nseg, lambda_val, constraints=None):
-    """
-    Conceptual framework for constrained P-spline fitting.
-    In practice, this would modify the linear system to include constraints.
-    """
-    # Create basic spline
-    spline = PSpline(x_data, y_data, nseg=nseg, lambda_=lambda_val)
-    spline.fit()
-    
-    # For demonstration, we'll show how constraints would affect the solution
-    # In a full implementation, this would modify the normal equations:
-    # (B^T B + λ P^T P + C^T C) α = B^T y + C^T d
-    # where C is the constraint matrix and d are the constraint values
-    
-    if constraints is not None:
-        print(f"Would apply constraints: {constraints}")
-        # This would implement the constraint logic
-    
-    return spline
+# Constrained fit: force f'(x) = 0 at the smallest x (x = 0).
+# DerivConstraint(order=k, initial=0, final=0) pins the k-th derivative to
+# zero at the smallest and/or largest x.
+spline_constrained = PSpline(x, y, nseg=25, lambda_=optimal_lambda,
+                             deriv_constraint=DerivConstraint(order=1, initial=0))
+spline_constrained.fit()
 
-# Plot unconstrained vs conceptual constrained approach
+# Plot unconstrained vs constrained fits
 plt.figure(figsize=(14, 10))
 
 plt.subplot(2, 2, 1)
@@ -110,24 +94,21 @@ plt.grid(True, alpha=0.3)
 print(f"=== Boundary Derivative Analysis ===")
 print(f"True f'(0): {true_deriv_0:.4f}")
 print(f"Unconstrained f'(0): {actual_deriv_0:.4f}")
+print(f"Constrained f'(0):   {spline_constrained.derivative(np.array([0]), deriv_order=1)[0]:.4f}")
 print(f"True f'(2π): {true_deriv_end:.4f}")
 print(f"Unconstrained f'(2π): {actual_deriv_end:.4f}")
 
-# Demonstrate constraint framework concept
+# Compare with the derivative-constrained fit
 plt.subplot(2, 1, 2)
 plt.scatter(x, y, alpha=0.6, s=30, label='Data')
 plt.plot(x_eval, true_eval, 'g--', linewidth=2, label='True function')
 plt.plot(x_eval, y_pred_uncon, 'r-', linewidth=2, label='Unconstrained')
 
-# Manually adjust for demonstration (this would be automatic with constraints)
-# This is just for visualization - not a real constraint implementation
-spline_demo = PSpline(x, y, nseg=25, lambda_=optimal_lambda * 2)  # More smoothing
-spline_demo.fit()
-y_pred_demo = spline_demo.predict(x_eval)
-plt.plot(x_eval, y_pred_demo, 'b-', linewidth=2, alpha=0.7, 
-         label='Higher smoothing (demo)')
+y_pred_con = spline_constrained.predict(x_eval)
+plt.plot(x_eval, y_pred_con, 'b-', linewidth=2, alpha=0.7, 
+         label="Constrained (f'(0) = 0)")
 
-plt.title('Comparison of Smoothing Approaches')
+plt.title('Unconstrained vs Derivative-Constrained Fit')
 plt.xlabel('x')
 plt.ylabel('y')
 plt.legend()
@@ -375,7 +356,7 @@ for i, penalty_order in enumerate(penalty_orders):
     spline_pen = PSpline(x_pen, y_data, nseg=25, penalty_order=penalty_order)
     
     # Find optimal lambda
-    opt_lambda, _ = cross_validation(spline_pen, n_lambda=30)
+    opt_lambda, _ = cross_validation(spline_pen)
     spline_pen.lambda_ = opt_lambda
     spline_pen.fit()
     
@@ -407,9 +388,10 @@ plt.show()
 # Detailed comparison of penalty matrices
 print("\n=== Penalty Matrix Properties ===")
 for penalty_order in penalty_orders:
-    # Build penalty matrix
+    # Build penalty matrix P = D'D
     nb = 30  # Example number of basis functions
-    P = build_penalty_matrix(nb, penalty_order)
+    D = difference_matrix(nb, penalty_order)
+    P = D.T @ D
     
     # Analyze properties
     rank = np.linalg.matrix_rank(P.toarray())
@@ -467,7 +449,7 @@ def create_custom_basis_demo():
         spline_config = PSpline(x_basis, y_basis, **config_params)
         
         # Optimize and fit
-        opt_lambda, _ = cross_validation(spline_config, n_lambda=20)
+        opt_lambda, _ = cross_validation(spline_config)
         spline_config.lambda_ = opt_lambda
         spline_config.fit()
         
@@ -614,7 +596,7 @@ def large_dataset_demo():
     
     start_time = time.time()
     spline_standard = PSpline(x_large, y_large, nseg=50)
-    opt_lambda, _ = cross_validation(spline_standard, n_lambda=20)  # Fewer lambda values
+    opt_lambda, _ = cross_validation(spline_standard)
     spline_standard.lambda_ = opt_lambda
     spline_standard.fit()
     standard_time = time.time() - start_time
@@ -623,7 +605,7 @@ def large_dataset_demo():
     print("Memory-efficient approach...")
     start_time = time.time()
     spline_efficient = PSpline(x_large, y_large, nseg=30)  # Fewer segments
-    opt_lambda_eff, _ = cross_validation(spline_efficient, n_lambda=15)
+    opt_lambda_eff, _ = cross_validation(spline_efficient)
     spline_efficient.lambda_ = opt_lambda_eff
     spline_efficient.fit()
     efficient_time = time.time() - start_time
@@ -743,7 +725,7 @@ def periodic_spline_demo():
     y_extended = np.concatenate([y_period, y_period])  # Replicate data
     
     spline_extended = PSpline(x_extended, y_extended, nseg=25)
-    opt_lambda_ext, _ = cross_validation(spline_extended, n_lambda=15)
+    opt_lambda_ext, _ = cross_validation(spline_extended)
     spline_extended.lambda_ = opt_lambda_ext
     spline_extended.fit()
     
@@ -1036,8 +1018,10 @@ successes = np.random.binomial(trials, true_prob)
 spline = PSpline(dose, successes, family="binomial", trials=trials, nseg=15)
 spline.fit()
 
-# predict returns estimated probabilities (mu/trials on response scale)
-pi_hat = spline.predict(dose_eval)
+# With trials, the response scale is expected counts (t·π), so get
+# probabilities at new doses from the link (logit) scale instead
+eta_hat = spline.predict(dose_eval, scale="link")
+pi_hat = 1 / (1 + np.exp(-eta_hat))
 ```
 
 ### Density Estimation
@@ -1062,7 +1046,8 @@ plt.title(f"Density Estimate (λ = {result.lambda_:.2f})")
 plt.show()
 
 # The density integrates to ~1
-print(f"Integral: {np.trapz(result.density, result.grid):.4f}")
+from scipy.integrate import trapezoid
+print(f"Integral: {trapezoid(result.density, result.grid):.4f}")
 ```
 
 ### Automatic Lambda Selection for GLM
@@ -1082,14 +1067,15 @@ spline.fit()
 
 The **Whittaker smoother** is the limiting case of P-splines where the B-spline
 basis is replaced by the identity matrix.  It operates directly on the data
-vector: no basis construction, no prediction at new points, just fast penalised
+vector: no basis construction and no smooth prediction at new points
+(`predict` interpolates linearly between fitted values), just fast penalised
 smoothing.
 
 ### When to Use
 
 | Prefer `WhittakerSmoother` | Prefer `PSpline` |
 |---|---|
-| Data already on a grid (signals, spectra, images) | Need prediction at new x-values |
+| Data already on a grid (signals, spectra, images) | Need smooth prediction at new x-values |
 | Only need the smoothed vector, not derivatives | Need derivatives or integrals |
 | Maximum speed / minimal memory | Need GLM families (Poisson, Binomial) |
 | Non-uniform time stamps, no interpolation needed | Shape constraints (monotone, convex) |
@@ -1108,7 +1094,7 @@ y = np.sin(x) + np.random.normal(0, 0.3, len(x))
 # Smooth with a fixed lambda
 ws = WhittakerSmoother(x, y, lambda_=1e4, penalty_order=2)
 ws.fit()
-print(f"Effective dimension: {ws.ed:.1f}")
+print(f"Effective dimension: {ws.ED:.1f}")
 ```
 
 ### Automatic $\lambda$ via GCV
@@ -1155,7 +1141,7 @@ The V-curve plots $\log \|Dz\|$ against $\log \|y - z\|$ as $\lambda$ varies.
 The corner of this curve corresponds to a good balance:
 
 ```python
-opt_lambda, lambdas, fit_norms, rough_norms = ws.v_curve()
+opt_lambda, vcurve_score = ws.v_curve()
 print(f"V-curve optimal lambda: {opt_lambda:.1f}")
 ```
 

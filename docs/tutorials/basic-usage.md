@@ -14,7 +14,7 @@ First, ensure you have PSplines installed with all dependencies:
 import numpy as np
 import matplotlib.pyplot as plt
 from psplines import PSpline
-from psplines.optimize import cross_validation, aic_selection, l_curve
+from psplines.optimize import cross_validation, aic, l_curve
 
 # Set random seed for reproducible results
 np.random.seed(42)
@@ -139,7 +139,7 @@ Instead of manually choosing parameters, you can use automatic selection methods
 spline = PSpline(x, y, nseg=20)
 
 # Use cross-validation to find optimal lambda
-optimal_lambda, cv_score = cross_validation(spline, lambda_min=1e-5, lambda_max=1e3)
+optimal_lambda, cv_score = cross_validation(spline, lambda_bounds=(1e-5, 1e3))
 print(f"Optimal λ: {optimal_lambda:.6f}")
 print(f"CV score: {cv_score:.6f}")
 
@@ -166,7 +166,7 @@ plt.show()
 ```python
 # AIC-based selection
 spline_aic = PSpline(x, y, nseg=20)
-optimal_lambda_aic, aic_score = aic_selection(spline_aic, lambda_min=1e-5, lambda_max=1e3)
+optimal_lambda_aic, aic_score = aic(spline_aic, lambda_bounds=(1e-5, 1e3))
 print(f"AIC optimal λ: {optimal_lambda_aic:.6f}")
 print(f"AIC score: {aic_score:.6f}")
 
@@ -226,7 +226,7 @@ fig, axes = plt.subplots(1, 3, figsize=(15, 5))
 # Function
 axes[0].scatter(x, y, alpha=0.6, s=20, label='Data')
 axes[0].plot(x_eval, y_pred, 'r-', linewidth=2, label='P-spline')
-axes[0].plot(x_eval, true_function, 'g--', alpha=0.7, label='True')
+axes[0].plot(x, true_function, 'g--', alpha=0.7, label='True')
 axes[0].set_title('Function')
 axes[0].legend()
 axes[0].grid(True, alpha=0.3)
@@ -255,8 +255,8 @@ After fitting, you can access various model properties:
 
 ```python
 print("=== Model Information ===")
-print(f"Number of data points: {spline.n}")
-print(f"Number of basis functions: {spline.nb}")
+print(f"Number of data points: {len(spline.x)}")
+print(f"Number of basis functions: {spline.B.shape[1]}")
 print(f"Effective degrees of freedom: {spline.ED:.2f}")
 print(f"Residual variance (σ²): {spline.phi_:.6f}")
 print(f"Residual standard deviation (σ): {np.sqrt(spline.phi_):.6f}")
@@ -429,5 +429,5 @@ In this tutorial, you learned:
 
 - **[Parameter Selection](parameter-selection.md)**: Deep dive into optimization methods
 - **[Uncertainty Methods](uncertainty-methods.md)**: Learn about confidence intervals and bootstrap
-- **[Advanced Features](advanced-features.md)**: Constraints, Bayesian inference, and more
+- **[Advanced Features](advanced-features.md)**: Constraints, adaptive penalties, and more
 - **[Examples Gallery](../examples/gallery.md)**: Real-world applications

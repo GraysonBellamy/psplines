@@ -1,6 +1,6 @@
 # Uncertainty Quantification Tutorial
 
-This tutorial covers the different methods available in PSplines for quantifying uncertainty in your fitted curves, including analytical standard errors, bootstrap methods, and Bayesian approaches.
+This tutorial covers the methods available in PSplines for quantifying uncertainty in your fitted curves: analytical standard errors and bootstrap methods.
 
 ## Introduction
 
@@ -10,10 +10,9 @@ Uncertainty quantification is crucial for:
 - Communicating confidence in predictions
 - Identifying regions where more data might be needed
 
-PSplines offers three main approaches to uncertainty quantification:
+PSplines offers two main approaches to uncertainty quantification:
 1. **Analytical standard errors** (fast, approximate)
 2. **Bootstrap methods** (slower, empirical)
-3. **Bayesian inference** (comprehensive, requires PyMC)
 
 ## Setup and Sample Data
 
@@ -104,7 +103,7 @@ The analytical method computes standard errors using:
 # Show the mathematical foundation
 print("=== Analytical Method Details ===")
 print(f"Model: y = Bα + ε, where ε ~ N(0, σ²I)")
-print(f"Standard errors based on: SE(f(x)) = σ √[b(x)ᵀ(BᵀB + λPᵀP)⁻¹BᵀB(BᵀB + λPᵀP)⁻¹b(x)]")
+print(f"Standard errors based on: SE(f(x)) = σ √[b(x)ᵀ(BᵀB + λPᵀP)⁻¹b(x)]")
 print(f"Where:")
 print(f"  - B is the basis matrix")
 print(f"  - P is the penalty matrix")
@@ -147,12 +146,11 @@ Bootstrap methods provide empirical estimates by resampling from the fitted mode
 ### Parametric Bootstrap
 
 ```python
-# Parametric bootstrap (assumes Gaussian errors)
+# Parametric bootstrap (assumes Gaussian errors) -- the built-in bootstrap
 y_pred_bootstrap, se_bootstrap = spline.predict(
     x_eval, 
     return_se=True, 
     se_method='bootstrap',
-    bootstrap_method='parametric',
     n_boot=500,  # Number of bootstrap samples
     n_jobs=2     # Parallel processing
 )
@@ -201,16 +199,20 @@ print(f"Expected coverage:   0.950")
 
 ### Residual Bootstrap
 
+The built-in bootstrap (`se_method='bootstrap'`) is parametric: it adds Gaussian
+noise with variance `phi_` to the fitted values. A residual bootstrap, which
+resamples the observed residuals instead, takes a few lines to write by hand:
+
 ```python
-# Residual bootstrap (resamples residuals)
-y_pred_resid_boot, se_resid_boot = spline.predict(
-    x_eval, 
-    return_se=True, 
-    se_method='bootstrap',
-    bootstrap_method='residual',
-    n_boot=500,
-    n_jobs=2
-)
+# Residual bootstrap (resamples residuals), written by hand
+rng = np.random.default_rng(0)
+residuals = y - spline.fitted_values
+resid_boot_curves = []
+for _ in range(500):
+    y_star = spline.fitted_values + rng.choice(residuals, size=len(y), replace=True)
+    boot_fit = PSpline(x, y_star, nseg=30, lambda_=spline.lambda_).fit()
+    resid_boot_curves.append(boot_fit.predict(x_eval))
+se_resid_boot = np.std(resid_boot_curves, axis=0, ddof=1)
 
 # Compare all three methods
 methods_data = [
@@ -328,113 +330,6 @@ plt.tight_layout()
 plt.show()
 ```
 
-## Method 3: Bayesian Inference
-
-When PyMC is available, you can perform full Bayesian inference.
-
-```python
-# Check if Bayesian methods are available
-try:
-    import pymc as pm
-    import arviz as az
-    bayesian_available = True
-    print("PyMC available - Bayesian methods enabled")
-except ImportError:
-    bayesian_available = False
-    print("PyMC not available - skipping Bayesian methods")
-    print("Install with: pip install pymc arviz")
-
-if bayesian_available:
-    # Bayesian P-spline fitting
-    print("Performing Bayesian inference...")
-    
-    # Set up Bayesian model (this might take a moment)
-    # adaptive=False (default) uses a single penalty λ (§3.5)
-    # adaptive=True uses per-difference λ_j for spatially varying smoothness (§8.8)
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        trace = spline.bayes_fit(
-            draws=1000,
-            tune=1000,
-            chains=2,
-            target_accept=0.95,
-        )
-    
-    # Get Bayesian predictions
-    y_pred_bayes, se_bayes = spline.predict(
-        x_eval, 
-        return_se=True, 
-        se_method='bayes',
-        bayes_samples=trace
-    )
-    
-    # Create credible intervals
-    # Sample from posterior predictive
-    n_samples = 500
-    y_samples = []
-    
-    # Extract posterior samples of coefficients
-    alpha_samples = trace.posterior['alpha'].values.reshape(-1, spline.nb)
-    
-    for i in range(min(n_samples, len(alpha_samples))):
-        spline_temp = PSpline(x, y, nseg=30, lambda_=optimal_lambda)
-        spline_temp.alpha = alpha_samples[i]
-        y_sample = spline_temp.predict(x_eval)
-        y_samples.append(y_sample)
-    
-    y_samples = np.array(y_samples)
-    
-    # Compute credible intervals
-    lower_credible = np.percentile(y_samples, 2.5, axis=0)
-    upper_credible = np.percentile(y_samples, 97.5, axis=0)
-    
-    # Plot Bayesian results
-    plt.figure(figsize=(14, 10))
-    
-    plt.subplot(2, 1, 1)
-    plt.scatter(x, y, alpha=0.7, s=30, color='gray', label='Data')
-    plt.plot(x_eval, true_eval, 'g--', linewidth=2, label='True function')
-    plt.plot(x_eval, y_pred_bayes, 'purple', linewidth=2, label='Bayesian fit')
-    plt.fill_between(x_eval, lower_credible, upper_credible, alpha=0.3, 
-                     color='purple', label='95% Credible Interval')
-    plt.title('Bayesian P-Spline')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    
-    # Compare all uncertainty methods
-    plt.subplot(2, 1, 2)
-    plt.plot(x_eval, se_analytical, 'red', linewidth=2, label='Analytical')
-    plt.plot(x_eval, se_bootstrap, 'blue', linewidth=2, label='Bootstrap')
-    plt.plot(x_eval, se_bayes, 'purple', linewidth=2, label='Bayesian')
-    plt.axhline(y=noise_std, color='black', linestyle='--', alpha=0.7, 
-                label=f'True noise std ({noise_std})')
-    plt.xlabel('x')
-    plt.ylabel('Standard Error')
-    plt.title('Uncertainty Method Comparison')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    plt.show()
-    
-    # Bayesian model diagnostics
-    print("=== Bayesian Diagnostics ===")
-    print(az.summary(trace, var_names=['tau', 'sigma']))
-    
-    # Coverage analysis
-    in_credible = (true_eval >= lower_credible) & (true_eval <= upper_credible)
-    coverage_bayes = np.mean(in_credible)
-    
-    print(f"\n=== Coverage Comparison ===")
-    print(f"Analytical (frequentist CI): {coverage:.3f}")
-    print(f"Bootstrap (frequentist CI):  {coverage_boot:.3f}")
-    print(f"Bayesian (credible interval): {coverage_bayes:.3f}")
-    print(f"Expected coverage:           0.950")
-    
-else:
-    print("Skipping Bayesian analysis - PyMC not available")
-```
-
 ## Practical Guidance: When to Use Each Method
 
 ### Performance Comparison
@@ -468,9 +363,6 @@ analytical_time = times['Analytical']
 for method_name, elapsed in times.items():
     relative_speed = analytical_time / elapsed
     print(f"{method_name:<20} {elapsed:<10.4f} {relative_speed:<15.1f}x")
-
-if bayesian_available:
-    print(f"{'Bayesian':<20} {'~10-60s':<10} {'~0.01x':<15}")
 ```
 
 ### Decision Framework
@@ -504,14 +396,8 @@ def recommend_uncertainty_method(n_points, computation_time='medium',
             recommendations.append("  - Use residual bootstrap for small samples")
             
     else:  # 'slow'
-        if bayesian_available:
-            recommendations.append("✓ Use BAYESIAN method")
-            recommendations.append("  - Most comprehensive uncertainty quantification")
-            recommendations.append("  - Provides full posterior distribution")
-            recommendations.append("  - Best for critical applications")
-        else:
-            recommendations.append("✓ Use BOOTSTRAP method (Bayesian not available)")
-            recommendations.append("  - Use high number of bootstrap samples (1000+)")
+        recommendations.append("✓ Use BOOTSTRAP method")
+        recommendations.append("  - Use high number of bootstrap samples (1000+)")
     
     # Additional considerations
     print("Primary recommendations:")
@@ -522,11 +408,10 @@ def recommend_uncertainty_method(n_points, computation_time='medium',
     print("Additional considerations:")
     
     if distribution_assumptions == 'non-normal':
-        print("• Non-normal errors: Prefer bootstrap or Bayesian methods")
+        print("• Non-normal errors: Prefer bootstrap methods")
     
     if n_points < 50:
         print("• Small sample: Be cautious with bootstrap methods")
-        print("• Small sample: Consider Bayesian approach with informative priors")
     
     if n_points > 1000:
         print("• Large sample: Analytical method often sufficient")
@@ -554,7 +439,7 @@ def simultaneous_confidence_bands(spline, x_eval, confidence_level=0.95, n_boot=
     
     for b in range(n_boot):
         # Generate bootstrap sample
-        y_boot = spline.predict(spline.x) + np.sqrt(spline.phi_) * np.random.randn(spline.n)
+        y_boot = spline.predict(spline.x) + np.sqrt(spline.phi_) * np.random.randn(len(spline.x))
         
         # Fit bootstrap spline
         spline_boot = PSpline(spline.x, y_boot, nseg=spline.nseg, lambda_=spline.lambda_)
@@ -617,7 +502,7 @@ print(f"Ratio (simultaneous/pointwise): {crit_val / np.mean(1.96 * se_analytical
 
 ```python
 # Prediction intervals include both model uncertainty and noise
-def prediction_intervals(spline, x_eval, confidence_level=0.95, method='analytical'):
+def prediction_intervals(spline, x_eval, confidence_level=0.95, method='analytic'):
     """
     Compute prediction intervals that account for both model and noise uncertainty.
     """
@@ -672,7 +557,7 @@ print(f"Total uncertainty: {np.mean(se_total_pi**2):.6f}")
 
 ## Summary
 
-This tutorial covered three main approaches to uncertainty quantification:
+This tutorial covered two main approaches to uncertainty quantification:
 
 ### Method Summary
 
@@ -680,22 +565,19 @@ This tutorial covered three main approaches to uncertainty quantification:
 |--------|-------|----------|-------------|----------|
 | **Analytical** | ⚡⚡⚡ | Good | Normal errors | Quick assessment |
 | **Bootstrap** | ⚡⚡ | Very Good | Minimal | General use |
-| **Bayesian** | ⚡ | Excellent | Full model | Critical applications |
 
 ### Key Takeaways
 
 1. **Analytical methods** are fastest and work well for well-behaved data
 2. **Bootstrap methods** provide robust estimates with minimal assumptions
-3. **Bayesian methods** offer the most comprehensive uncertainty quantification
-4. **Choose based on**: computational budget, required accuracy, and application criticality
-5. **Simultaneous confidence bands** are wider than pointwise bands
-6. **Prediction intervals** are wider than confidence intervals (include noise)
+3. **Choose based on**: computational budget, required accuracy, and application criticality
+4. **Simultaneous confidence bands** are wider than pointwise bands
+5. **Prediction intervals** are wider than confidence intervals (include noise)
 
 ### Recommendations
 
 - **Exploratory analysis**: Use analytical standard errors
 - **Production applications**: Use bootstrap methods
-- **Critical decisions**: Consider Bayesian approaches
 - **Multiple comparisons**: Use simultaneous confidence bands
 - **Forecasting**: Use prediction intervals
 
